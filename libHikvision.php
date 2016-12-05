@@ -1,10 +1,10 @@
 <?php
 /*
- * Hikvision CCTV Class, version 1.1
+ * Hikvision CCTV Class, version 1.2
  * This class will parse a Hikvision index file (e.g. index00.bin) tha
  * typically gets stored on external media such as an SD card or NFS share.
  *
- * Access to ffmpeg and shell() is required for the creation of thumbnails.
+ * Access to avconv and shell() is required for the creation of thumbnails.
  *
  * Thanks go to Alexey Ozerov for his C++ hiktools utility:
  *    https://github.com/aloz77/hiktools
@@ -378,54 +378,132 @@ class hikvisionCCTV
 		fclose($fh);
 	}
 	
+
+	///
+	/// extractSegmentMP4( Index File, File Number , Start Offset, End Offset, 
+	/// Cache Location )
+	/// Extracts a recording segment (likely x264) and copies the raw video
+	/// stream into an MP4 container that's more useful.
+	///
+	public function extractSegmentMP4( $_dataDirNum, $_file , $_startOffset, $_endOffset , $_cachePath , $_resolution )
+	{
+		$file = $this->getFileName($_file);
+		$path = $this->pathJoin(
+			$this->configuration[$_dataDirNum]['path'],
+			$file
+		);
+		$tempFileName = $_dataDirNum.'.'. $_file.'.'. $_startOffset.'.'. $_endOffset.'.'. $_resolution;
+		$pathExtracted = $this->pathJoin( $_cachePath, $tempFileName.'.h264');
+		$pathTranscoded = $this->pathJoin( $_cachePath, $tempFileName.'.mp4');
+		
+		// If file already exists, return path to it.
+		if( file_exists( $pathTranscoded ))
+			return $pathTranscoded;
+		
+		// Extract raw h264 footage and store in temp file. Avoiding 
+		// pipes to improve performance. Testing showed just piping dd to
+		// ffmpeg was _really_ slow.
+		$fh = fopen( $path, 'rb');
+		if($fh == false)
+			die("Unable to open $path");
+		
+		if( fseek($fh, $_startOffset) === false )
+			die("Unable to seek to position $_startOffset in $path");
+		
+		while(ftell($fh) < $_endOffset)
+		{
+			file_put_contents($pathExtracted, fread($fh, 4096), FILE_APPEND);
+		}
+		fclose($fh);
+		
+		// Extract footage and pass to avconv. 
+		if( $_resolution != null and $_resolution != "null" )
+			$cmd = 'avconv -i '.$pathExtracted.' -threads auto -s '.$_resolution.' -c:a none '.$pathTranscoded;
+		else
+			$cmd = 'avconv -i '.$pathExtracted.' -threads auto -c:v copy -c:a none '.$pathTranscoded;
+		system($cmd);
+		
+		// Transcode complete. Remove original file.
+		unlink($pathExtracted);
+		
+		return $pathTranscoded;
+	}
+	
 	
 	///
-	/// getSegmentClipHTTPstream( Index File, File Number , Start Offset, End Offset )
-	///
-	public function getSegmentClipHTTPstream( $_dataDirNum, $_file , $_startOffset, $_endOffset )
+	/// streamFileToBrowser (Path to file)
+	/// Uses HTTP Range to stream a file to a browser. Neeed in Chrome and 
+	/// other browsers to cleanly stream a file.
+	/// Based on code from:
+	/// http://www.media-division.com/php-download-script-with-resume-option/
+	/// 
+	function streamFileToBrowser( $_file )
 	{
-		$filename = $this->getFileName($_file);
-		$pathOriginal = $this->pathJoin(
-			$this->configuration[$_dataDirNum]['path'],
-			$filename
-		);
-		$pathCropped = "streamvideo/crop_$filename";
-		$pathStreamed = "streamvideo/str_$filename";
+		/**
+		* Copyright 2012 Armand Niculescu - media-division.com
+		* Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+		* 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+		* 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+		* THIS SOFTWARE IS PROVIDED BY THE FREEBSD PROJECT "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE FREEBSD PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+		*/
+		ob_clean();
 		
-		$file = fopen($pathOriginal, 'rb');
-		$cur=$_startOffset;
-		fseek($file,$_startOffset,0);
-		while(!feof($file) && $cur<$_endOffset){
-			file_put_contents($pathCropped, fread($file,min(1024*16,$_endOffset-$cur)), FILE_APPEND);
-			$cur+=1024*16;
+		$fh = @fopen($_file, 'rb');
+		$file_size = filesize( $_file );
+		header('Content-Type: video/mp4');
+		
+		// Check if this is a HTTP Range request.
+		$range = '';
+		if(isset($_SERVER['HTTP_RANGE']))
+		{
+			list($size_unit, $range_orig) = explode('=', $_SERVER['HTTP_RANGE'], 2);
+			if(!$size_unit == 'bytes')
+			{
+				header('HTTP/1.1 416 Requested Range Not Satisfiable');
+				exit;
+			}
+			
+			// Multiple ranges could be specified.
+			list($range, $extra_ranges) = array_pad( explode(',',$range_orig,2),2,null);
 		}
-		fclose($file);
-
-		$cmd = "ffmpeg -i $pathCropped -y -vcodec libx264 -vf scale=-2:480 -preset veryfast -pix_fmt yuv420p $pathStreamed";
-		passthru($cmd);
-		unlink($pathCropped);
-
-		$file2 = fopen($pathStreamed, 'rb');
-		$size = filesize($pathStreamed);
-		$cur=0;
-		$start=0;
-		$end=$size-1;
-		header("Content-Type: video/mp4");
-		header("Content-Length: ".$size);
-
-		fseek($file2, $start);
-		// $buffer = 512;
-		// while(!feof($file2) && ($p = ftell($file2)) <= $end) {
-		// 	if ($p + $buffer > $end) {
-		// 		$buffer = $end - $p + 1;
-		// 	}
-		// 	set_time_limit(0);
-		// 	echo fread($file2, $buffer);
-		// 	flush();
-		// }
-		echo fread($file2, $size);
-		fclose($file2);
-		unlink($pathStreamed);
+		
+		// Figure out download chunk from range (if set).
+		list($seek_start, $seek_end) = array_pad(explode('-', $range,2),2,null);
+		
+		// Set start and end based on range (if set).
+		// Also check for invalid ranges.
+		$seek_end = (empty($seek_end)) ? ($file_size - 1) : min(abs(intval($seek_end)),($file_size - 1));
+		$seek_start = (empty($seek_start) || $seek_end < abs(intval($seek_start))) ? 0 : max(abs(intval($seek_start)),0);
+		
+		// IE Workaround:
+		// Only send partial content header if downloading a piece of a file
+		if( $seek_start > 0 || $seek_end < ($file_size -1))
+		{
+			header('HTTP/1.1 206 Partial Content');
+			header('Content-Range: bytes '.$seek_start.'-'.$seek_end.'/'.$file_size);
+			header('Content-Length: '.($seek_end - $seek_start + 1));
+		}
+		else
+		{
+			header('Content-Length: '.$file_size);
+		}
+		
+		header('Accept-Ranges: bytes');
+		set_time_limit(0);
+		fseek($fh, $seek_start);
+		while(!feof($fh))
+		{
+			print(@fread($fh, 4096));
+			ob_flush();
+			flush();
+			if (connection_status()!=0)
+			{
+				@fclose($fh);
+				exit;
+			}
+		}
+		@flose($fh);
+		exit;
 	}
 
 	
@@ -453,7 +531,7 @@ class hikvisionCCTV
 		
 		if(!file_exists($_output))
 		{
-			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | ffmpeg -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
+			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | avconv -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
 			system($cmd);
 		}
 	}
@@ -467,6 +545,5 @@ class hikvisionCCTV
 	{
 		return preg_replace('~[/\\\]+~', DIRECTORY_SEPARATOR, implode(DIRECTORY_SEPARATOR, func_get_args()));
 	}
-	
 }
 ?>

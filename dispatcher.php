@@ -4,14 +4,10 @@
 
 	require_once 'libHikvision.php';
 
-
-	//$cfgCCTVPaths = array('/exports/CAM02/datadir0/','/exports/CAM02/datadir1');
-	// $cfgCCTVPaths = "/mnt/hikvision/spicam1/info.bin";
 	$camPaths = array(
 		"/home/bkbilly/tmpmount/info.bin",
 		"/home/bkbilly/tmpmount/info.bin",
 	);
-
 
 
 	$action = $_REQUEST['action'];
@@ -27,14 +23,18 @@
 		$file = $_REQUEST['file'];
 		$videoStart = $_REQUEST['start'];
 		$videoEnd = $_REQUEST['end'];
+		$resolution = $_REQUEST['resolution'];
 		$cctv = new hikvisionCCTV( $camPaths[$camera] );
-		$cctv->getSegmentClipHTTPstream($datadir,$file,$videoStart,$videoEnd);
+		$VideoFile = $cctv->extractSegmentMP4($datadir,$file,$videoStart,$videoEnd,'streamvideo',$resolution);
+		error_log($VideoFile);
+		$cctv->streamFileToBrowser($VideoFile);
 	}
 
 	function getAllEvents($camPaths){
-		$dayBegin = strtotime($_REQUEST['start']);
-		$dayEnd = strtotime($_REQUEST['end']);
+		$dayBegin = $_REQUEST['start'];
+		$dayEnd = $_REQUEST['end'];
 		$cameras = json_decode($_REQUEST['cameras']);
+
 		$allEvents = array();
 		foreach ($cameras as $camera) {
 			$cctv = new hikvisionCCTV( $camPaths[$camera] );
