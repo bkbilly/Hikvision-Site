@@ -4,9 +4,10 @@
 
 	require_once 'libHikvision.php';
 
+	define("TMPVIDEOFILES", "streamvideo");
 	$camPaths = array(
-		"/home/bkbilly/tmpmount/info.bin",
-		"/home/bkbilly/tmpmount/info.bin",
+		"/home/bkbilly/hickvisionMount/info.bin",
+		"/home/bkbilly/hickvisionMount/info.bin",
 	);
 
 
@@ -14,6 +15,7 @@
 	switch($action){
 		case 'getVideo' : getVideo($camPaths); break;
 		case 'getAllEvents' : getAllEvents($camPaths); break;
+		case 'deleteVideos' : deleteVideos(); break;
 		default: echo "Not an Option"; break;
 	}
 
@@ -24,17 +26,27 @@
 		$videoStart = $_REQUEST['start'];
 		$videoEnd = $_REQUEST['end'];
 		$resolution = $_REQUEST['resolution'];
+		if (!file_exists(TMPVIDEOFILES)) {
+			mkdir(TMPVIDEOFILES, 0777);
+			
+		}
 		$cctv = new hikvisionCCTV( $camPaths[$camera] );
-		$VideoFile = $cctv->extractSegmentMP4($datadir,$file,$videoStart,$videoEnd,'streamvideo',$resolution);
-		error_log($VideoFile);
+		$VideoFile = $cctv->extractSegmentMP4($datadir,$file,$videoStart,$videoEnd,TMPVIDEOFILES,$resolution);
 		$cctv->streamFileToBrowser($VideoFile);
+	}
+
+	function deleteVideos(){
+		foreach (glob($dir.TMPVIDEOFILES."/*") as $filename) {
+			if (is_file($filename)) {
+				unlink($filename);
+			}
+		}
 	}
 
 	function getAllEvents($camPaths){
 		$dayBegin = $_REQUEST['start'];
 		$dayEnd = $_REQUEST['end'];
 		$cameras = json_decode($_REQUEST['cameras']);
-
 		$allEvents = array();
 		foreach ($cameras as $camera) {
 			$cctv = new hikvisionCCTV( $camPaths[$camera] );
@@ -48,8 +60,8 @@
 				$timeStart = $event['cust_startTime'];
 				$timeEnd = $event['cust_endTime'];
 				$allEvents[] = array(
-					'start' => date("Y-m-j H:i:s",$timeStart),
-					'end' => date("Y-m-j H:i:s",$timeEnd),
+					'start' => date("Y-m-d H:i:s",$timeStart),
+					'end' => date("Y-m-d H:i:s",$timeEnd),
 					'content' => "",
 					'group' => intval($camera),
 					'datadir' => $datadir,

@@ -1,0 +1,42 @@
+body, html {
+	font-family: sans-serif;
+}
+
+#visualization{
+	position: relative;
+	/*bottom: 0;*/
+	width: 100%;
+}
+.Menu {
+	position: relative;
+	bottom: 0;
+	right: 0;
+	margin: 10px;
+	z-index: 9999;
+}
+
+.start {
+	background-color: green;
+}
+.end {
+	background-color: blue;
+}
+
+video {
+	background: black;
+}
+#video-container {
+	/*margin-top: 10em;*/
+	/*position: absolute;*/
+	width: 100%;
+}
+#video{
+	height: 100%;
+	width: 100%;
+}
+#loading {
+	position: relative;
+	top: 20px;
+	left: 50%;
+	right: 50%;
+}
