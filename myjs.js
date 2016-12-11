@@ -5,10 +5,45 @@ var end;
 var groups;
 
 
-
 $( document ).ready(function() {
-	initProject();
+	$.ajax({
+		url: 'dispatcher.php?action=usrStatus',
+		success: function (data) {
+			var logged = JSON.parse(data);
+			if (logged.connected === false){
+				$('#unregistered').show();
+			}
+			else{
+				$('#registered').show();
+				console.log("true");
+				initProject();
+				initEvents();
+			}
+		},
+		error: function (err) {
+			console.log('Error', err);
+		}
+	});
 
+});
+
+function logout(){
+	$.ajax({url: 'dispatcher.php?action=logout'});
+	location.reload();
+}
+function login(){
+	username = $('#inputUser').val();
+	password = $('#inputPass').val();
+	$.getJSON("dispatcher.php?action=login&user="+ username +"&password="+ password +"", function(response){
+		if(response['credentials'] === true){
+			location.reload();
+		} else {
+			console.log("login = false...");
+		}
+	});
+
+}
+function initEvents(){
 	// ----==== MyButtons Events ====----
 	document.getElementById('zoomIn').onclick = function(){ zoom(-0.3); };
 	document.getElementById('zoomOut').onclick = function(){ zoom( 0.3); };
@@ -73,10 +108,7 @@ $( document ).ready(function() {
 			show: {ready: false}
 		});
 	});
-
-});
-
-
+}
 function initProject(){
 	$.ajax({url: 'dispatcher.php?action=deleteVideos'});
 

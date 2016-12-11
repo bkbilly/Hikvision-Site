@@ -18,7 +18,20 @@
 </head>
 <body class="gradient-pattern">
 
+	<div id="unregistered">
+		<form action="javascript:login()">
+			<div class="form-container">
+				<label><b>Username</b></label>
+				<input type="text" placeholder="Enter Username" id="inputUser" name="user" required>
+				<label><b>Password</b></label>
+				<input type="password" placeholder="Enter Password" id="inputPass" name="password" required>
+				<button type="submit">Login</button>
 
+			</div>
+		</form>
+	</div>
+
+	<div id="registered">
 		<div class="Menu">
 			<input type="button" id="zoomIn" value="Zoom in"/>
 			<input type="button" id="zoomOut" value="Zoom out"/>
@@ -30,16 +43,17 @@
 			</select>
 			<input type="range" id="myRange" min="-20" max="20" step="0.1" value="1">
 			<label id="speedNum"></label>
+			<button type="button" class="logoutbtn" onclick="logout()">Logout</button>
 		</div>
-	<div id="visualization">
-	</div>
 
+		<div id="visualization"></div>
 
-	<div id="video-container">
-		<video id="video" controls>
-			<source  id="source" src="" type="video/mp4">
-		</video>
-		<div id="loading" class="loader"></div>
+		<div id="video-container">
+			<video id="video" controls>
+				<source  id="source" src="" type="video/mp4">
+			</video>
+			<div id="loading" class="loader"></div>
+		</div>
 	</div>
 
 

@@ -4,6 +4,8 @@
 
 	require_once 'libHikvision.php';
 
+	define("USERNAME", "admin");
+	define("PASSWORD", "admin");
 	define("TMPVIDEOFILES", "streamvideo");
 	$camPaths = array(
 		"/home/bkbilly/hickvisionMount/info.bin",
@@ -16,23 +18,62 @@
 		case 'getVideo' : getVideo($camPaths); break;
 		case 'getAllEvents' : getAllEvents($camPaths); break;
 		case 'deleteVideos' : deleteVideos(); break;
+		case 'login' : login(); break;
+		case 'logout' : logout(); break;
+		case 'usrStatus' : usrStatus(); break;
 		default: echo "Not an Option"; break;
 	}
 
-	function getVideo($camPaths){
-		$camera = $_REQUEST['camera'];
-		$datadir = $_REQUEST['datadir'];
-		$file = $_REQUEST['file'];
-		$videoStart = $_REQUEST['start'];
-		$videoEnd = $_REQUEST['end'];
-		$resolution = $_REQUEST['resolution'];
-		if (!file_exists(TMPVIDEOFILES)) {
-			mkdir(TMPVIDEOFILES, 0777);
-			
+	function login(){
+		session_start();
+		$user = $_REQUEST['user'];
+		$pass = $_REQUEST['password'];
+		if($user == USERNAME and $pass == PASSWORD){
+			$_SESSION['UserName']=$user;
+			$status = array('credentials' => true);
 		}
-		$cctv = new hikvisionCCTV( $camPaths[$camera] );
-		$VideoFile = $cctv->extractSegmentMP4($datadir,$file,$videoStart,$videoEnd,TMPVIDEOFILES,$resolution);
-		$cctv->streamFileToBrowser($VideoFile);
+		else{
+			$status = array('credentials' => false);
+		}
+		echo json_encode($status);
+	}
+
+	function logout(){
+		session_start();
+		unset($_SESSION['UserName']);
+		session_destroy();
+		$status = array('logout' => true);
+		echo json_encode($status);
+	}
+
+	function usrStatus(){
+		session_start();
+		if(isset($_SESSION['UserName'])){
+			$status = array('connected' => true);
+		}
+		else{
+			$status = array('connected' => false);
+		}
+		echo json_encode($status);
+	}
+
+
+	function getVideo($camPaths){
+		session_start();
+		if(isset($_SESSION['UserName'])){
+			$camera = $_REQUEST['camera'];
+			$datadir = $_REQUEST['datadir'];
+			$file = $_REQUEST['file'];
+			$videoStart = $_REQUEST['start'];
+			$videoEnd = $_REQUEST['end'];
+			$resolution = $_REQUEST['resolution'];
+			if (!file_exists(TMPVIDEOFILES)) {
+				mkdir(TMPVIDEOFILES, 0777);
+			}
+			$cctv = new hikvisionCCTV( $camPaths[$camera] );
+			$VideoFile = $cctv->extractSegmentMP4($datadir,$file,$videoStart,$videoEnd,TMPVIDEOFILES,$resolution);
+			$cctv->streamFileToBrowser($VideoFile);
+		}
 	}
 
 	function deleteVideos(){
@@ -44,31 +85,34 @@
 	}
 
 	function getAllEvents($camPaths){
-		$dayBegin = $_REQUEST['start'];
-		$dayEnd = $_REQUEST['end'];
-		$cameras = json_decode($_REQUEST['cameras']);
-		$allEvents = array();
-		foreach ($cameras as $camera) {
-			$cctv = new hikvisionCCTV( $camPaths[$camera] );
+		session_start();
+		if(isset($_SESSION['UserName'])){
+			$dayBegin = $_REQUEST['start'];
+			$dayEnd = $_REQUEST['end'];
+			$cameras = json_decode($_REQUEST['cameras']);
+			$allEvents = array();
+			foreach ($cameras as $camera) {
+				$cctv = new hikvisionCCTV( $camPaths[$camera] );
 
-			$events = $cctv->getSegmentsBetweenDates($dayBegin, $dayEnd);
-			foreach($events as $event){
-				$datadir = $event['cust_dataDirNum'];
-				$file = $event['cust_fileNum'];
-				$videoStart = $event['startOffset'];
-				$videoEnd = $event['endOffset'];
-				$timeStart = $event['cust_startTime'];
-				$timeEnd = $event['cust_endTime'];
-				$allEvents[] = array(
-					'start' => date("Y-m-d H:i:s",$timeStart),
-					'end' => date("Y-m-d H:i:s",$timeEnd),
-					'content' => "",
-					'group' => intval($camera),
-					'datadir' => $datadir,
-					'file' => $file,
-					'videoStart' => $videoStart,
-					'videoEnd' => $videoEnd
-				);
+				$events = $cctv->getSegmentsBetweenDates($dayBegin, $dayEnd);
+				foreach($events as $event){
+					$datadir = $event['cust_dataDirNum'];
+					$file = $event['cust_fileNum'];
+					$videoStart = $event['startOffset'];
+					$videoEnd = $event['endOffset'];
+					$timeStart = $event['cust_startTime'];
+					$timeEnd = $event['cust_endTime'];
+					$allEvents[] = array(
+						'start' => date("Y-m-d H:i:s",$timeStart),
+						'end' => date("Y-m-d H:i:s",$timeEnd),
+						'content' => "",
+						'group' => intval($camera),
+						'datadir' => $datadir,
+						'file' => $file,
+						'videoStart' => $videoStart,
+						'videoEnd' => $videoEnd
+					);
+				}
 			}
 		}
 		echo json_encode($allEvents);
