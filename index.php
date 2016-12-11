@@ -16,23 +16,22 @@
 	<link href="mycss.css" rel="stylesheet" type="text/css" />
 
 </head>
-<body>
+<body class="gradient-pattern">
 
 
-	<div id="visualization">
 		<div class="Menu">
 			<input type="button" id="zoomIn" value="Zoom in"/>
 			<input type="button" id="zoomOut" value="Zoom out"/>
-			<input type="button" id="speedDown" value="Speed Down"/>
-			<label id="speedNum"></label>
-			<input type="button" id="speedUp" value="Speed Up"/>
 			<select id="resolution">
 				<option value="null" selected>Original</option>
 				<option value="1920x1080">1920x1080</option>
 				<option value="1280x720">1280x720</option>
 				<option value="640x360">640x360</option>
 			</select>
+			<input type="range" id="myRange" min="-20" max="20" step="0.1" value="1">
+			<label id="speedNum"></label>
 		</div>
+	<div id="visualization">
 	</div>
 
 

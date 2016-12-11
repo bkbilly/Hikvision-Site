@@ -12,8 +12,7 @@ $( document ).ready(function() {
 	// ----==== MyButtons Events ====----
 	document.getElementById('zoomIn').onclick = function(){ zoom(-0.3); };
 	document.getElementById('zoomOut').onclick = function(){ zoom( 0.3); };
-	document.getElementById('speedDown').onclick = function(){ speed(-0.2); };
-	document.getElementById('speedUp').onclick = function(){ speed( 0.2); };
+	$("#myRange").on("input", function(){speed(this.value)});
 
 	// ----==== Video Events ====----
 	$('#video').on('loadstart', function (event) {
@@ -31,6 +30,17 @@ $( document ).ready(function() {
 			vid.pause();
 		}
 	});
+	$(document).keypress(function(event) {
+		if (event.charCode === 32){
+			video = document.getElementById("video")
+			if (video.paused === true) {
+				video.play();
+			}
+			else{
+				video.pause();
+			}
+		}
+	});
 	$('#video').on('ended', function (event) {
 		var tmpEvent = findNextEvent(timeline.getSelection());
 		if(tmpEvent !== undefined && tmpEvent !== selectedEvent){
@@ -42,9 +52,9 @@ $( document ).ready(function() {
 
 	// ----==== Timeline Events ====----
 	timeline.on('timechanged', function (properties) {
-		if(properties.id === 'start'){
+		if(properties.id === 'startEvents'){
 			start = properties.time;
-		} else if(properties.id === 'end'){
+		} else if(properties.id === 'endEvents'){
 			end = properties.time;
 		}
 		loadCamData(start, end, groups);
@@ -73,11 +83,11 @@ function initProject(){
 	var container = document.getElementById('visualization');
 	groups = [{
 			id: 0,
-			content: 'Saloni'
+			content: 'Kouzina'
 		},
 		{
 			id: 1,
-			content: 'Kouzina'
+			content: 'Saloni'
 		}
 	];
 	var options = {
@@ -96,7 +106,7 @@ function initProject(){
 		start: start,
 		end:   end
 	});
-	speed(0);
+	speed(1);
 	loadCamData(start, end, groups);
 }
 function findNextEvent(dataID){
@@ -184,7 +194,7 @@ function zoom(percentage) {
 }
 function speed(newSpeed) {
 	videoID = document.getElementById("video");
-	videoID.defaultPlaybackRate = videoID.defaultPlaybackRate + newSpeed;
-	videoID.playbackRate = videoID.playbackRate + newSpeed;
+	videoID.defaultPlaybackRate = newSpeed;
+	videoID.playbackRate = newSpeed;
 	document.getElementById('speedNum').textContent =  Math.round(videoID.playbackRate * 100) / 100;
 }
