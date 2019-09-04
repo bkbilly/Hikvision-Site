@@ -418,9 +418,9 @@ class hikvisionCCTV
 		
 		// Extract footage and pass to avconv. 
 		if( $_resolution != null and $_resolution != "null" )
-			$cmd = 'avconv -i '.$pathExtracted.' -threads auto -s '.$_resolution.' -c:a none '.$pathTranscoded;
+			$cmd = 'ffmpeg -i '.$pathExtracted.' -threads auto -s '.$_resolution.' -c:a none '.$pathTranscoded;
 		else
-			$cmd = 'avconv -i '.$pathExtracted.' -threads auto -c:v copy -c:a none '.$pathTranscoded;
+			$cmd = 'ffmpeg -i '.$pathExtracted.' -threads auto -c:v copy -c:a none '.$pathTranscoded;
 		system($cmd);
 		
 		// Transcode complete. Remove original file.
@@ -446,11 +446,11 @@ class hikvisionCCTV
 		* 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 		* THIS SOFTWARE IS PROVIDED BY THE FREEBSD PROJECT "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE FREEBSD PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 		*/
-		ob_clean();
+		#ob_clean();
 		
 		$fh = @fopen($_file, 'rb');
 		$file_size = filesize( $_file );
-		header('Content-Type: video/mp4');
+		#header('Content-Type: video/mp4');
 		
 		// Check if this is a HTTP Range request.
 		$range = '';
@@ -485,17 +485,16 @@ class hikvisionCCTV
 		}
 		else
 		{
-			header('Content-Length: '.$file_size);
+			#header('Content-Length: '.$file_size);
 		}
 		
-		header('Accept-Ranges: bytes');
+		#header('Accept-Ranges: bytes');
 		set_time_limit(0);
 		fseek($fh, $seek_start);
+                ob_implicit_flush(true);
 		while(!feof($fh))
 		{
 			print(@fread($fh, 4096));
-			ob_flush();
-			flush();
 			if (connection_status()!=0)
 			{
 				@fclose($fh);
@@ -503,7 +502,9 @@ class hikvisionCCTV
 			}
 		}
 		@flose($fh);
+                ob_end_flush();
 		exit;
+
 	}
 
 	
@@ -531,7 +532,7 @@ class hikvisionCCTV
 		
 		if(!file_exists($_output))
 		{
-			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | avconv -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
+			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | ffmpeg -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
 			system($cmd);
 		}
 	}

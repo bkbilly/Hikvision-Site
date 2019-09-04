@@ -4,12 +4,13 @@
 
 	require_once 'libHikvision.php';
 
-	define("USERNAME", "admin");
-	define("PASSWORD", "admin");
+	define("USERNAME", "user");
+	define("PASSWORD", "user");
 	define("TMPVIDEOFILES", "streamvideo");
 	$camPaths = array(
-		"/home/bkbilly/hickvisionMount/info.bin",
-		"/home/bkbilly/hickvisionMount/info.bin",
+		"/mnt/hikvision/spicam1/info.bin",
+		"/mnt/hikvision/spicam3/info.bin",
+		"/mnt/hikvision/spicam2/info.bin",
 	);
 
 
@@ -49,14 +50,18 @@
 	function usrStatus(){
 		session_start();
 		if(isset($_SESSION['UserName'])){
-			$status = array('connected' => true);
+			if($_SESSION['UserName'] == USERNAME){
+				$status = array('connected' => true);
+			}
+			else{
+				$status = array('connected' => false);
+			}
 		}
 		else{
 			$status = array('connected' => false);
 		}
 		echo json_encode($status);
 	}
-
 
 	function getVideo($camPaths){
 		session_start();
@@ -77,7 +82,7 @@
 	}
 
 	function deleteVideos(){
-		foreach (glob($dir.TMPVIDEOFILES."/*") as $filename) {
+		foreach (glob(TMPVIDEOFILES."/*") as $filename) {
 			if (is_file($filename)) {
 				unlink($filename);
 			}
@@ -93,7 +98,6 @@
 			$allEvents = array();
 			foreach ($cameras as $camera) {
 				$cctv = new hikvisionCCTV( $camPaths[$camera] );
-
 				$events = $cctv->getSegmentsBetweenDates($dayBegin, $dayEnd);
 				foreach($events as $event){
 					$datadir = $event['cust_dataDirNum'];

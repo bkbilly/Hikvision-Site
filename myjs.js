@@ -24,7 +24,6 @@ $( document ).ready(function() {
 			console.log('Error', err);
 		}
 	});
-
 });
 
 function logout(){
@@ -88,11 +87,18 @@ function initEvents(){
 	// ----==== Timeline Events ====----
 	timeline.on('timechanged', function (properties) {
 		if(properties.id === 'startEvents'){
-			start = properties.time;
+			if (end - properties.time > 0){
+				start = properties.time;
+				loadCamData(start, end, groups);
+			}
 		} else if(properties.id === 'endEvents'){
-			end = properties.time;
+			if (properties.time - start > 0){
+				end = properties.time;
+				loadCamData(start, end, groups);
+			}
 		}
-		loadCamData(start, end, groups);
+		timeline.setCustomTime(start, 'startEvents');
+		timeline.setCustomTime(end, 'endEvents');
 	});
 	timeline.on('select', function (properties) {
 		if(properties.items.length === 0){
@@ -120,6 +126,10 @@ function initProject(){
 		{
 			id: 1,
 			content: 'Saloni'
+		},
+		{
+			id: 2,
+			content: 'Trapezaria'
 		}
 	];
 	var options = {
@@ -129,7 +139,7 @@ function initProject(){
 	timeline = new vis.Timeline(container, [], groups, options);
 
 	start = new Date();
-	start.setDate(start.getDate() - 1);
+	start.setDate(start.getDate() - 0.1);
 	end = new Date();
 
 	timeline.addCustomTime(start, 'startEvents');
@@ -140,6 +150,7 @@ function initProject(){
 	});
 	speed(1);
 	loadCamData(start, end, groups);
+
 }
 function findNextEvent(dataID){
 	var timeEvent = timeline.itemsData.get(dataID)[0];
@@ -194,6 +205,7 @@ function selectEventPlay(selectedEvent){
 	video.play();
 }
 function loadCamData(start, end, groups){
+	$('#loading').fadeIn()
 	timestampStart = Math.round(start.getTime()/1000) - (start.getTimezoneOffset() * 60);
 	timestampEnd = Math.round(end.getTime()/1000) - (end.getTimezoneOffset() * 60);
 	var cameras = [];
@@ -209,9 +221,11 @@ function loadCamData(start, end, groups){
 			var items = JSON.parse(data);
 			timeline.setItems(new vis.DataSet(items));
 			// timeline.fit();
+			$('#loading').fadeOut()
 		},
 		error: function (err) {
 			console.log('Error', err);
+			$('#loading').fadeOut()
 		}
 	});
 }

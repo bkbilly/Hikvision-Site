@@ -40,6 +40,7 @@
 				<option value="1920x1080">1920x1080</option>
 				<option value="1280x720">1280x720</option>
 				<option value="640x360">640x360</option>
+				<option value="480x270">480x270</option>
 			</select>
 			<input type="range" id="myRange" min="-20" max="20" step="0.1" value="1">
 			<label id="speedNum"></label>
@@ -47,12 +48,12 @@
 		</div>
 
 		<div id="visualization"></div>
+		<div id="loading" class="loader"></div>
 
 		<div id="video-container">
 			<video id="video" controls>
 				<source  id="source" src="" type="video/mp4">
 			</video>
-			<div id="loading" class="loader"></div>
 		</div>
 	</div>
 
