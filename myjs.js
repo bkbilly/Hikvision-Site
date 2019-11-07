@@ -56,26 +56,8 @@ function initEvents(){
 	});
 	$('#video').on('canplay', function (event) {
 	});
-	$("#video").on("click", function (event) {
-		var vid = $(this).get(0);
-		if (vid.paused) {
-			vid.play();
-		} else {
-			vid.pause();
-		}
-	});
-	$(document).keypress(function(event) {
-		if (event.charCode === 32){
-			video = document.getElementById("video")
-			if (video.paused === true) {
-				video.play();
-			}
-			else{
-				video.pause();
-			}
-		}
-	});
 	$('#video').on('ended', function (event) {
+		console.log('Video Ended')
 		var tmpEvent = findNextEvent(timeline.getSelection());
 		if(tmpEvent !== undefined && tmpEvent !== selectedEvent){
 			timeline.setSelection(tmpEvent, {focus: true});
@@ -101,13 +83,14 @@ function initEvents(){
 		timeline.setCustomTime(end, 'endEvents');
 	});
 	timeline.on('select', function (properties) {
-		if(properties.items.length === 0){
+		if(properties.items.length === 0 || properties.event.type === 'press'){
 			timeline.setSelection(selectedEvent);
 			return 0;
 		}
 		selectedEvent = timeline.getSelection();
-		selectEventPlay(selectedEvent);
+		console.log(properties);
 		console.log(selectedEvent);
+		selectEventPlay(selectedEvent);
 	});
 	$(document).on("mouseenter", '.vis-item', function ($e) {
 		$(this).qtip({
@@ -130,6 +113,10 @@ function initProject(){
 		{
 			id: 2,
 			content: 'Trapezaria'
+		},
+		{
+			id: 3,
+			content: 'Backyard'
 		}
 	];
 	var options = {
@@ -193,16 +180,26 @@ function selectEventPlay(selectedEvent){
 	file = selectedDOM.attr('data-file');
 	videostart = selectedDOM.attr('data-videostart');
 	videoend = selectedDOM.attr('data-videoend');
+	datestart = new Date(selectedDOM.attr('data-start'));
+	dateend = new Date(selectedDOM.attr('data-end'));
+	datediff = Math.round((dateend - datestart) / 1000 / 60 * 100) / 100
 	camera = selectedDOM.attr('data-group');
 	resolution = $("#resolution").val();
+	console.log(datediff);
 	console.log(resolution);
+	continueRun = true
+	if(datediff > 2 && resolution != 'null'){
+		continueRun = confirm('This video is ' + datediff + ' minutes, this could have a negative affect on this Server. Continue running?')
+	}
+	if(continueRun){
+		streamURL = "dispatcher.php?action=getVideo&camera="+camera+"&datadir="+datadir+"&file="+file+"&start="+videostart+"&end="+videoend+"&resolution="+resolution;
+		var video = document.getElementById('video');
+		var source = document.getElementById('source');
+		source.setAttribute("src", streamURL);
+		video.load();
+		video.play();
+	}
 
-	streamURL = "dispatcher.php?action=getVideo&camera="+camera+"&datadir="+datadir+"&file="+file+"&start="+videostart+"&end="+videoend+"&resolution="+resolution;
-	var video = document.getElementById('video');
-	var source = document.getElementById('source');
-	source.setAttribute("src", streamURL);
-	video.load();
-	video.play();
 }
 function loadCamData(start, end, groups){
 	$('#loading').fadeIn()
