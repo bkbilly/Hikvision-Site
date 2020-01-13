@@ -8,11 +8,13 @@
 	define("PASSWORD", $_SERVER["AuthPass"]);
 	define("TMPVIDEOFILES", "streamvideo");
 	$camPaths = explode(',', $_SERVER['camPaths']);
+	$camNames = explode(',', $_SERVER['camNames']);
 
 
 	$action = $_REQUEST['action'];
 	switch($action){
 		case 'getVideo' : getVideo($camPaths); break;
+		case 'getCamPaths' : getCamPaths($camPaths, $camNames); break;
 		case 'getAllEvents' : getAllEvents($camPaths); break;
 		case 'deleteVideos' : deleteVideos(); break;
 		case 'login' : login(); break;
@@ -62,6 +64,13 @@
 			$status = array('connected' => false);
 		}
 		echo json_encode($status);
+	}
+
+	function getCamPaths($camPaths, $camNames){
+		session_start();
+		if(isset($_SESSION['UserName'])){
+			echo json_encode($camNames);
+		}
 	}
 
 	function getVideo($camPaths){

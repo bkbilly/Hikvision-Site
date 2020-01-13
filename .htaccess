@@ -2,5 +2,6 @@ Deny from all
 Allow from 192.168.2.1/16
 SetEnv AuthUser user
 SetEnv AuthPass user
-SetEnv camPaths "/mnt/hikvision/spicam1/info.bin"
+SetEnv camPaths "/mnt/hikvision/spicam1/info.bin,/mnt/hikvision/spicam3/info.bin,/mnt/hikvision/spicam2/info.bin,/mnt/hikvision/spicam4/info.bin"
+SetEnv camNames "Kouzina,Saloni,Trapezaria,Backyard"
 

@@ -30,6 +30,7 @@ function logout(){
 	$.ajax({url: 'dispatcher.php?action=logout'});
 	location.reload();
 }
+
 function login(){
 	username = $('#inputUser').val();
 	password = $('#inputPass').val();
@@ -42,6 +43,7 @@ function login(){
 	});
 
 }
+
 function initEvents(){
 	// ----==== MyButtons Events ====----
 	document.getElementById('zoomIn').onclick = function(){ zoom(-0.3); };
@@ -98,47 +100,38 @@ function initEvents(){
 		});
 	});
 }
+
 function initProject(){
 	$.ajax({url: 'dispatcher.php?action=deleteVideos'});
-
-	var container = document.getElementById('visualization');
-	groups = [{
-			id: 0,
-			content: 'Kouzina'
-		},
-		{
-			id: 1,
-			content: 'Saloni'
-		},
-		{
-			id: 2,
-			content: 'Trapezaria'
-		},
-		{
-			id: 3,
-			content: 'Backyard'
+	groups = []
+	$.getJSON("dispatcher.php?action=getCamPaths", function(response){
+		for (var i = 0; i < response.length; i++) {
+			console.log(i, response[i])
+			groups.push({id: i, content: response[i]});
 		}
-	];
-	var options = {
-		dataAttributes: 'all',
-		stack: false
-	};
-	timeline = new vis.Timeline(container, [], groups, options);
 
-	start = new Date();
-	start.setDate(start.getDate() - 0.1);
-	end = new Date();
+		var container = document.getElementById('visualization');
+		var options = {
+			dataAttributes: 'all',
+			stack: false
+		};
+		timeline = new vis.Timeline(container, [], groups, options);
 
-	timeline.addCustomTime(start, 'startEvents');
-	timeline.addCustomTime(end, 'endEvents');
-	timeline.setWindow({
-		start: start,
-		end:   end
-	});
-	speed(1);
-	loadCamData(start, end, groups);
+		start = new Date();
+		start.setDate(start.getDate() - 0.1);
+		end = new Date();
 
+		timeline.addCustomTime(start, 'startEvents');
+		timeline.addCustomTime(end, 'endEvents');
+		timeline.setWindow({
+			start: start,
+			end:   end
+		});
+		speed(1);
+		loadCamData(start, end, groups);
+	})
 }
+
 function findNextEvent(dataID){
 	var timeEvent = timeline.itemsData.get(dataID)[0];
 	var timeEventStart = new Date(timeEvent.start);
@@ -174,6 +167,7 @@ function findNextEvent(dataID){
 
 	return timeEventSelect
 }
+
 function selectEventPlay(selectedEvent){
 	var selectedDOM = $('div[data-id="'+selectedEvent+'"]');
 	datadir = selectedDOM.attr('data-datadir');
@@ -201,6 +195,7 @@ function selectEventPlay(selectedEvent){
 	}
 
 }
+
 function loadCamData(start, end, groups){
 	$('#loading').fadeIn()
 	timestampStart = Math.round(start.getTime()/1000) - (start.getTimezoneOffset() * 60);
@@ -226,6 +221,7 @@ function loadCamData(start, end, groups){
 		}
 	});
 }
+
 function zoom(percentage) {
 	var range = timeline.getWindow();
 	var interval = range.end - range.start;
@@ -235,9 +231,11 @@ function zoom(percentage) {
 		end:   range.end.valueOf()   + interval * percentage
 	});
 }
+
 function speed(newSpeed) {
 	videoID = document.getElementById("video");
 	videoID.defaultPlaybackRate = newSpeed;
 	videoID.playbackRate = newSpeed;
 	document.getElementById('speedNum').textContent =  Math.round(videoID.playbackRate * 100) / 100;
 }
+
