@@ -4,14 +4,10 @@
 
 	require_once 'libHikvision.php';
 
-	define("USERNAME", "user");
-	define("PASSWORD", "user");
+	define("USERNAME", $_SERVER["AuthUser"]);
+	define("PASSWORD", $_SERVER["AuthPass"]);
 	define("TMPVIDEOFILES", "streamvideo");
-	$camPaths = array(
-		"/mnt/hikvision/spicam1/info.bin",
-		"/mnt/hikvision/spicam3/info.bin",
-		"/mnt/hikvision/spicam2/info.bin",
-	);
+	$camPaths = explode(',', $_SERVER['camPaths']);
 
 
 	$action = $_REQUEST['action'];
@@ -36,6 +32,11 @@
 		else{
 			$status = array('credentials' => false);
 		}
+		if(isset($_REQUEST['redirect']))
+		{
+			header("Location: ". $_REQUEST['redirect']);
+		}
+
 		echo json_encode($status);
 	}
 
