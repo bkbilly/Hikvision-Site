@@ -69,21 +69,9 @@ function initEvents(){
 	});
 
 	// ----==== Timeline Events ====----
-	timeline.on('timechanged', function (properties) {
-		if(properties.id === 'startEvents'){
-			if (end - properties.time > 0){
-				start = properties.time;
-				loadCamData(start, end, groups);
-			}
-		} else if(properties.id === 'endEvents'){
-			if (properties.time - start > 0){
-				end = properties.time;
-				loadCamData(start, end, groups);
-			}
-		}
-		timeline.setCustomTime(start, 'startEvents');
-		timeline.setCustomTime(end, 'endEvents');
-	});
+	timeline.on('rangechanged', debounce(function (properties) {
+		loadCamData(properties.start, properties.end, groups);
+	}, 1000));
 	timeline.on('select', function (properties) {
 		if(properties.items.length === 0 || properties.event.type === 'press'){
 			timeline.setSelection(selectedEvent);
@@ -239,3 +227,24 @@ function speed(newSpeed) {
 	document.getElementById('speedNum').textContent =  Math.round(videoID.playbackRate * 100) / 100;
 }
 
+function debounce(func, wait, immediate) {
+	var timeout;
+
+	return function executedFunction() {
+	 	var context = this;
+	  	var args = arguments;
+
+		var later = function() {
+			timeout = null;
+			if (!immediate) func.apply(context, args);
+		};
+
+		var callNow = immediate && !timeout;
+
+		clearTimeout(timeout);
+
+		timeout = setTimeout(later, wait);
+
+		if (callNow) func.apply(context, args);
+	};
+  }
