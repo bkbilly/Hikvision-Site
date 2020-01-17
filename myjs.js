@@ -17,7 +17,6 @@ $( document ).ready(function() {
 				$('#registered').show();
 				console.log("true");
 				initProject();
-				initEvents();
 			}
 		},
 		error: function (err) {
@@ -129,6 +128,7 @@ function initProject(){
 		});
 		speed(1);
 		loadCamData(start, end, groups);
+		initEvents();
 	})
 }
 
