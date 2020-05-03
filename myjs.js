@@ -25,6 +25,10 @@ $( document ).ready(function() {
 	});
 });
 
+window.onresize = function(){
+	fixVideoHeight();
+}
+
 function logout(){
 	$.ajax({url: 'dispatcher.php?action=logout'});
 	location.reload();
@@ -88,6 +92,8 @@ function initEvents(){
 			timeline.setSelection(selectedEvent);
 			return 0;
 		}
+		$('#video-container').fadeIn()
+		fixVideoHeight()
 		selectedEvent = timeline.getSelection();
 		console.log(properties);
 		console.log(selectedEvent);
@@ -98,6 +104,17 @@ function initEvents(){
 			show: {ready: false}
 		});
 	});
+}
+
+function fixVideoHeight(){
+	$('#video-container').height(
+	parseInt($(window).height() -
+	$('.Menu').outerHeight(true) -
+	$('#visualization').outerHeight(true) -
+	parseInt($("#visualization").css("margin-top")) -
+	parseInt($("body").css("margin-top")) -
+	parseInt($("body").css("margin-bottom"))
+	));
 }
 
 function initProject(){
