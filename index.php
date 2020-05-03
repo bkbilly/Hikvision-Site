@@ -3,6 +3,8 @@
 <html>
 <head>
 	<title>Timeline | External data</title>
+	<meta name="viewport" content="width=device-width">
+	<meta name="mobile-web-app-capable" content="yes">
 
 	<!-- Load jquery for ajax support -->
 	<script src="packages/jquery.min.js"></script>
