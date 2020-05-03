@@ -34,6 +34,7 @@ video {
 	background: black;
 }
 #video-container {
+	min-height: 300px;
 	display: none;
 	position: relative;
 	margin-top: 5px;
