@@ -9,6 +9,8 @@
 	define("TMPVIDEOFILES", "streamvideo");
 	$camPaths = explode(',', $_SERVER['camPaths']);
 	$camNames = explode(',', $_SERVER['camNames']);
+	$camIPs = explode(',', $_SERVER['camIPs']);
+	$camAuths = explode(',', $_SERVER['camAuths']);
 
 
 	$action = $_REQUEST['action'];
@@ -20,6 +22,7 @@
 		case 'login' : login(); break;
 		case 'logout' : logout(); break;
 		case 'usrStatus' : usrStatus(); break;
+		case 'videopicture' : videopicture($camIPs, $camAuths); break;
 		default: echo "Not an Option"; break;
 	}
 
@@ -130,5 +133,17 @@
 			}
 		}
 		echo json_encode($allEvents);
+	}
+
+	function videopicture($camIPs, $camAuths)
+	{
+		session_start();
+		if(isset($_SESSION['UserName'])){
+			$camIndex = $_REQUEST['index'];
+			header('Content-Type: image/jpeg');
+			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+			$fh = readfile($url);
+			echo $fh;
+		}
 	}
 ?>

@@ -54,8 +54,9 @@
 
 		<div id="video-container">
 			<video id="video" controls>
-				<source  id="source" src="" type="video/mp4">
+				<source id="source" src="" type="video/mp4">
 			</video>
+			<img id='liveview' src=""/>
 		</div>
 	</div>
 

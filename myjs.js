@@ -92,6 +92,8 @@ function initEvents(){
 			timeline.setSelection(selectedEvent);
 			return 0;
 		}
+		$('#video').show()
+		$('#liveview').hide()
 		$('#video-container').fadeIn()
 		fixVideoHeight()
 		selectedEvent = timeline.getSelection();
@@ -106,14 +108,29 @@ function initEvents(){
 	});
 }
 
+function hideTimeline(){
+	$('#visualization').toggle('slow', function() {
+		fixVideoHeight();
+	});
+}
+
 function fixVideoHeight(){
-	$('#video-container').height(
-	parseInt($(window).height() -
-	$('.Menu').outerHeight(true) -
-	$('#visualization').outerHeight(true) -
-	parseInt($("#visualization").css("margin-top")) -
-	parseInt($("body").css("margin-top")) -
-	parseInt($("body").css("margin-bottom"))
+	var visualization_height = 0;
+	var menu_height = 0;
+	if ($('#visualization').is(":visible"))
+		visualization_height = parseInt(
+			$('#visualization').outerHeight(true) +
+			parseInt($("#visualization").css("margin-top"))
+		);
+	if ($('.Menu').is(":visible"))
+		menu_height = parseInt($('.Menu').outerHeight(true))
+
+	$('#video-container').height(parseInt(
+		$(window).height() -
+		menu_height -
+		visualization_height -
+		parseInt($("body").css("margin-top")) -
+		parseInt($("body").css("margin-bottom"))
 	));
 }
 
@@ -122,8 +139,10 @@ function initProject(){
 	groups = []
 	$.getJSON("dispatcher.php?action=getCamPaths", function(response){
 		for (var i = 0; i < response.length; i++) {
+			content = '<a href="#" onclick="showLivestream('+i+');">' + response[i] + '</a>'
+			//content = response[i]
 			console.log(i, response[i])
-			groups.push({id: i, content: response[i]});
+			groups.push({id: i, content: content});
 		}
 
 		var container = document.getElementById('visualization');
@@ -254,5 +273,21 @@ function speed(newSpeed) {
 	videoID.defaultPlaybackRate = newSpeed;
 	videoID.playbackRate = newSpeed;
 	document.getElementById('speedNum').textContent =  Math.round(videoID.playbackRate * 100) / 100;
+}
+
+function showLivestream(index){
+	$('#video').hide()
+	$('#liveview').show()
+	$('#video-container').fadeIn()
+
+	url = 'dispatcher.php?action=videopicture&index=' + index
+	console.log(url)
+	$('#liveview').attr('src', url).load(function(){
+		console.log('loaded');
+		fixVideoHeight();
+	});
+
+	//var source = document.getElementById('liveview');
+	//source.setAttribute("src", 'dispatcher.php?action=videopicture&index=' + index);
 }
 
