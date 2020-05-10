@@ -2,7 +2,7 @@
 
 This Web Application is a nice UI for all your hikvision cameras. It supports Login and it is using native HTML5 without the need to install any other plugin for the client.
 
-![Preview of the interface](images/spinet.png)
+![Preview of the interface](images/spicam.png)
 
 
 ### Dependencies ###
