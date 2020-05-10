@@ -35,8 +35,9 @@
 
 	<div id="registered">
 		<div class="Menu">
-			<input type="button" id="zoomIn" value="Zoom in"/>
-			<input type="button" id="zoomOut" value="Zoom out"/>
+			<input type="button" id="toggleVis" value="Hide"/>
+			<input type="button" id="prevEvent" value="Prev Event"/>
+			<input type="button" id="nextEvent" value="Next Event"/>
 			<select id="resolution">
 				<option value="null" selected>Original</option>
 				<option value="1920x1080">1920x1080</option>

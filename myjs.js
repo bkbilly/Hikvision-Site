@@ -49,8 +49,18 @@ function login(){
 
 function initEvents(){
 	// ----==== MyButtons Events ====----
-	document.getElementById('zoomIn').onclick = function(){ zoom(-0.3); };
-	document.getElementById('zoomOut').onclick = function(){ zoom( 0.3); };
+	document.getElementById('prevEvent').onclick = function(){ gotoEvent('previous'); };
+	document.getElementById('nextEvent').onclick = function(){ gotoEvent('next'); };
+	document.getElementById('toggleVis').onclick = function(){ $('#visualization').toggle('slow', function() {fixVideoHeight();}); };
+	document.getElementById('liveview').onclick = function(){ $('#liveview').attr('src', $('#liveview').attr('src')); };
+	(function(){
+		$('#liveview').attr('src', $('#liveview').attr('src')).load(function(){
+			console.log('loaded');
+			fixVideoHeight();
+		});
+		setTimeout(arguments.callee, 4000);
+	})();
+
 	$("#myRange").on("input", function(){speed(this.value)});
 
 	// ----==== Video Events ====----
@@ -63,12 +73,7 @@ function initEvents(){
 	});
 	$('#video').on('ended', function (event) {
 		console.log('Video Ended')
-		var tmpEvent = findNextEvent(timeline.getSelection());
-		if(tmpEvent !== undefined && tmpEvent !== selectedEvent){
-			timeline.setSelection(tmpEvent, {focus: false});
-			selectedEvent = timeline.getSelection();
-			selectEventPlay(selectedEvent);
-		}
+		gotoEvent('next');
 	});
 
 	// ----==== Timeline Events ====----
@@ -169,7 +174,17 @@ function initProject(){
 	})
 }
 
-function findNextEvent(dataID){
+function gotoEvent(position){
+	var tmpEvent = findEvent(timeline.getSelection(), position);
+	console.log(tmpEvent);
+	if(tmpEvent !== undefined && tmpEvent !== selectedEvent){
+		timeline.setSelection(tmpEvent, {focus: false});
+		selectedEvent = timeline.getSelection();
+		selectEventPlay(selectedEvent);
+	}
+}
+
+function findEvent(dataID, position){
 	var timeEvent = timeline.itemsData.get(dataID)[0];
 	var timeEventStart = new Date(timeEvent.start);
 	var timeEventGroup = timeEvent.group;
@@ -182,11 +197,19 @@ function findNextEvent(dataID){
 		var tmpEvent = allEvents[i];
 		var tmpEventStart = new Date(tmpEvent.start);
 		if(timeEventGroup === tmpEvent.group){
-			if(timeEventStart < tmpEventStart){
-				maxEvents.push(tmpEvent);
+			if (position === 'next') {
+				if(timeEventStart < tmpEventStart){
+					maxEvents.push(tmpEvent);
+				}
+			}
+			if (position === 'previous'){
+				if(timeEventStart > tmpEventStart){
+					maxEvents.push(tmpEvent);
+				}
 			}
 		}
 	};
+	console.log(maxEvents);
 	if(maxEvents.length === 0)
 		return undefined;
 
@@ -195,10 +218,18 @@ function findNextEvent(dataID){
 	for (var i = 0; i < maxEvents.length; i++) {
 		var tmpEvent = maxEvents[i];
 		var tmpEventStart = new Date(tmpEvent.start);
-		if(tmpEventStart < timeEventStart){
-			timeEventSelect = [tmpEvent.id];
-		} else {
-			timeEventStart = tmpEventStart;
+		if (position === 'next') {
+			if(tmpEventStart < timeEventStart){
+				timeEventSelect = [tmpEvent.id];
+			} else {
+				timeEventStart = tmpEventStart;
+			}
+		} else if (position === 'previous'){
+			if(tmpEventStart > timeEventStart){
+				timeEventSelect = [tmpEvent.id];
+			} else {
+				timeEventStart = tmpEventStart;
+			}
 		}
 	};
 
