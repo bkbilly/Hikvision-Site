@@ -8,8 +8,8 @@
 
 	<!-- Load jquery for ajax support -->
 	<script src="packages/jquery.min.js"></script>
-	<script src="packages/vis.js"></script>
-	<link href="packages/vis.css" rel="stylesheet" type="text/css" />
+	<script src="packages/vis-timeline-graph2d.min.js"></script>
+	<link href="packages/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
 
 	<script src="packages/jquery.qtip.min.js"></script>
 	<link href="packages/jquery.qtip.min.css" rel="stylesheet" type="text/css" />
@@ -56,7 +56,7 @@
 			<video id="video" controls>
 				<source id="source" src="" type="video/mp4">
 			</video>
-			<img id='liveview' src=""/>
+			<img id='liveview' src="dispatcher.php?action=videopicture"/>
 		</div>
 	</div>
 

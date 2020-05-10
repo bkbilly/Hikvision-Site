@@ -35,7 +35,6 @@ video {
 }
 #video-container {
 	min-height: 300px;
-	display: none;
 	position: relative;
 	margin-top: 5px;
 	width: 100%;
@@ -45,6 +44,7 @@ video {
 	width: 100%;
 }
 #video{
+	display: none;
 	height: 100%;
 	width: 100%;
 }

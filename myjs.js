@@ -65,7 +65,7 @@ function initEvents(){
 		console.log('Video Ended')
 		var tmpEvent = findNextEvent(timeline.getSelection());
 		if(tmpEvent !== undefined && tmpEvent !== selectedEvent){
-			timeline.setSelection(tmpEvent, {focus: true});
+			timeline.setSelection(tmpEvent, {focus: false});
 			selectedEvent = timeline.getSelection();
 			selectEventPlay(selectedEvent);
 		}
@@ -148,7 +148,8 @@ function initProject(){
 		var container = document.getElementById('visualization');
 		var options = {
 			dataAttributes: 'all',
-			stack: false
+			stack: false,
+			onInitialDrawComplete: function() { fixVideoHeight(); },
 		};
 		timeline = new vis.Timeline(container, [], groups, options);
 
@@ -282,12 +283,11 @@ function showLivestream(index){
 
 	url = 'dispatcher.php?action=videopicture&index=' + index
 	console.log(url)
-	$('#liveview').attr('src', url).load(function(){
-		console.log('loaded');
-		fixVideoHeight();
-	});
-
-	//var source = document.getElementById('liveview');
-	//source.setAttribute("src", 'dispatcher.php?action=videopicture&index=' + index);
+	if ($('#liveview').is(":visible")) {
+		$('#liveview').attr('src', url).load(function(){
+			console.log('loaded');
+			fixVideoHeight();
+		});
+	}
 }
 

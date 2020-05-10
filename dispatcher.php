@@ -139,11 +139,30 @@
 	{
 		session_start();
 		if(isset($_SESSION['UserName'])){
-			$camIndex = $_REQUEST['index'];
-			header('Content-Type: image/jpeg');
-			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
-			$fh = readfile($url);
-			echo $fh;
+			if ( isset($_REQUEST['index']) ) {
+				$camIndex = $_REQUEST['index'];
+				header('Content-Type: image/jpeg');
+				$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+				$fh = readfile($url);
+				echo $fh;
+			} else {
+				$stack = new Imagick();
+				foreach ($camIPs as $index => $ip) {
+					$url = 'http://'.$camAuths[$index].'@'.$ip.'/Streaming/channels/102/picture';
+					$stack->addImage(new Imagick($url));
+				}
+				$sizex = intval(sizeof($camIPs) / 2);
+				$sizey = sizeof($camIPs) - $sizex;
+				$sizeDim = $sizex.'x'.$sizey;
+
+				$montage = $stack->montageImage(new ImagickDraw(), $sizeDim, '640x360', 0, '0');
+				$montage->setImageCompression(Imagick::COMPRESSION_JPEG);
+				#$montage->setImageCompressionQuality(20);
+				$montage->writeImage(TMPVIDEOFILES.'/out.jpg');
+
+				header('Content-Type: image/jpeg');
+				echo file_get_contents(TMPVIDEOFILES.'/out.jpg');
+			}
 		}
 	}
 ?>
