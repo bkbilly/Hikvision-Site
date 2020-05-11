@@ -243,7 +243,8 @@ class hikvisionCCTV
 					'C4infoNum/'.
 					'C8infoTypes/'.
 					'C4infoStartTime/'.
-					'C4infoEndTime/'.
+					'C2infoEndTime/'.
+					'C2existByte/'.
 					'C4infoStartOffset/'.
 					'C4infoEndOffset'
 					,$data);
@@ -255,9 +256,13 @@ class hikvisionCCTV
 				$tmp['cust_fileNum'] = $i;
 				$tmp['cust_dataDirNum'] = $this->getDataDirNum($_indexFile);
 				$tmp['cust_indexFile'] = $_indexFile;
+				$tmp['fileExists'] = False;
+				if ($tmp['existByte1'] >= 160 && $tmp['existByte2'] >= 94) {
+					$tmp['fileExists'] = True;
+				}
 		
 				// Ignore empty and those which are still recording.	
-				if($tmp['type'] != 0 && $tmp['endTime'] != 0)
+				if($tmp['type'] != 0 && $tmp['endTime'] != 0 && $tmp['fileExists'] == True)
 					array_push($results, $tmp);
 			}
 		}
