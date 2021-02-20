@@ -262,7 +262,7 @@ class hikvisionCCTV
 				}
 		
 				// Ignore empty and those which are still recording.	
-				if($tmp['type'] != 0 && $tmp['endTime'] != 0 && $tmp['fileExists'] == True)
+				if($tmp['type'] != 0 && $tmp['endTime'] != 0) //&& $tmp['fileExists'] == True)
 					array_push($results, $tmp);
 			}
 		}
