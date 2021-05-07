@@ -6,8 +6,10 @@ This Web Application is a nice UI for all your hikvision cameras. It supports Lo
 
 
 ### Dependencies ###
-
-It needs PHP version 5.6 or newer for the unpack to support 64 bit format
+  * PHP version 5.6 or newer for the unpack to support 64 bit format
+  * php-imagick for the image preview
+  * php-sqlite3 for reading the new data structure
+  * Enable .htaccess support on your http server
 
 ### How to configure ###
 
