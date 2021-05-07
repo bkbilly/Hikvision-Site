@@ -7,7 +7,7 @@
  * Access to avconv and shell() is required for the creation of thumbnails.
  *
  * Thanks go to Alexey Ozerov for his C++ hiktools utility:
- *    https://github.com/aloz77/hiktools
+ *	https://github.com/aloz77/hiktools
  *
  * 
  */ 
@@ -55,9 +55,16 @@ class hikvisionCCTV
 		// array.
 		foreach($paths as $path)
 		{
+			$indexfile = $this->pathJoin($path ,'index00.bin');
+			$indextype = 'bin';
+			if (!file_exists($indexfile)) {
+				$indexfile = $this->pathJoin($path ,'record_db_index00');
+				$indextype = 'sqlite';
+			}
 			$tmp = array(
 				'path' => $path,
-				'indexFile' => $this->pathJoin($path ,'index00.bin')
+				'indexFile' => $indexfile,
+				'idxType' => $indextype
 				);
 			$this->configuration[] = $tmp;
 		}
@@ -185,7 +192,11 @@ class hikvisionCCTV
 		foreach($this->configuration as $dataDir)
 		{
 			// Get the segments for the index file of this datadir.
-			$segments = $this->getSegmentsForIndexFile($dataDir['indexFile']);
+			if ($dataDir['idxType'] == 'bin') {
+				$segments = $this->getSegmentsForIndexFile($dataDir['indexFile']);
+			} else if ($dataDir['idxType'] == 'sqlite') {
+				$segments = $this->getSegmentsForIndexFileSQL($dataDir['indexFile']);
+			}
 			
 			// Iterate over this datadir's segments and append the segment to
 			// the results array.
@@ -197,6 +208,35 @@ class hikvisionCCTV
 		return $results;
 	}
 
+	///
+	/// getSegmentsForIndexFileSQL( Path to Index File )
+	/// Returns an array of files and segments from a
+	/// Hikvision "record_db_index00" file.
+	///
+	private function getSegmentsForIndexFileSQL( $_indexFile )
+	{
+		$db = new SQLite3($_indexFile);
+
+		$dbquery = $db->query('SELECT
+				file_no as "cust_fileNum",
+				start_offset as "startOffset",
+				end_offset as "endOffset",
+				start_time_tv_sec as "cust_startTime",
+				end_time_tv_sec as "cust_endTime"
+			FROM record_segment_idx_tb
+			WHERE record_type != 0;
+		');
+
+		$results = array();
+		while ($row = $dbquery->fetchArray()) {
+			$row['cust_dataDirNum'] = $this->getDataDirNum($_indexFile);
+			array_push($results, $row);
+			// error_log(json_encode($row));
+		}
+		error_log(json_encode($results));
+		return $results;
+
+	}
 
 	///
 	/// getSegmentsForIndexFile( Path to Index File )
@@ -496,7 +536,7 @@ class hikvisionCCTV
 		#header('Accept-Ranges: bytes');
 		set_time_limit(0);
 		fseek($fh, $seek_start);
-                ob_implicit_flush(true);
+				ob_implicit_flush(true);
 		while(!feof($fh))
 		{
 			print(@fread($fh, 4096));
@@ -507,7 +547,7 @@ class hikvisionCCTV
 			}
 		}
 		@flose($fh);
-                ob_end_flush();
+				ob_end_flush();
 		exit;
 
 	}
