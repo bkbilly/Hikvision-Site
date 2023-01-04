@@ -1,17 +1,10 @@
-# README #
+# README
 
 This Web Application is a nice UI for all your hikvision cameras. It supports Login and it is using native HTML5 without the need to install any other plugin for the client.
 
 ![Preview of the interface](images/spicam.png)
 
-
-### Dependencies ###
-  * PHP version 5.6 or newer for the unpack to support 64 bit format
-  * php-imagick for the image preview
-  * php-sqlite3 for reading the new data structure
-  * Enable .htaccess support on your http server
-
-### How to configure ###
+### Configure
 
 *.htaccess:*
 
@@ -21,6 +14,16 @@ This Web Application is a nice UI for all your hikvision cameras. It supports Lo
 * At the **SetEnv camIPs** add a comma sepperated list of the IPs of each camera.
 * At the **SetEnv camAuths** add a comma sepperated list of the usernames/passwords for the authentication in this format: "admin:password"
 
-### Credits ###
+
+### Dependencies
+  * PHP version 5.6 or newer for the unpack to support 64 bit format
+  * php-imagick for the image preview
+  * php-sqlite3 for reading the new data structure
+  * Enable .htaccess support on your http server
+
+### Docker
+You can install it using docker from here: https://hub.docker.com/r/bkbillybk/hikvision_site
+
+### Credits
 
 Used a modified version of libHikvision library by Dave Hope, available at https://github.com/davehope/libHikvision
