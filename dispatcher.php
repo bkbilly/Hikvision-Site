@@ -149,7 +149,10 @@
 				$stack = new Imagick();
 				foreach ($camIPs as $index => $ip) {
 					$url = 'http://'.$camAuths[$index].'@'.$ip.'/Streaming/channels/102/picture';
-					$stack->addImage(new Imagick($url));
+					$image = file_get_contents($url);
+					$img = new Imagick();
+					$img->readImageBlob($image);
+					$stack->addImage($img);
 				}
 				$sizex = intval(sizeof($camIPs) / 2);
 				$sizey = sizeof($camIPs) - $sizex;
