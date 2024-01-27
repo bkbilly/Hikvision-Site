@@ -173,7 +173,7 @@
 
 					if (($camVersions[$index] ?? null) == 1) {
 						$ch = curl_init();
-						$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
+						$url = 'http://'.$ip.'/ISAPI/Streaming/Channels/101/picture';
 						curl_setopt($ch, CURLOPT_URL, $url);
 						// curl_setopt($ch, CURLOPT_VERBOSE, true);
 						curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
@@ -190,7 +190,7 @@
 						$image = $result;
 
 					} else {
-						$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+						$url = 'http://'.$camAuths[$camIndex].'@'.$ip.'/Streaming/channels/102/picture';
 						$image = file_get_contents($url);
 					}
 					
