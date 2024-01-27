@@ -6,4 +6,3 @@ SetEnv camPaths "/mnt/hikvision/spicam1/info.bin,/mnt/hikvision/spicam2/info.bin
 SetEnv camNames "Kouzina,Saloni"
 SetEnv camIPs "192.168.1.160,192.168.1.161"
 SetEnv camAuths "admin:password,admin:password"
-

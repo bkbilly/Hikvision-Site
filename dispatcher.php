@@ -11,6 +11,7 @@
 	$camNames = explode(',', $_SERVER['camNames']);
 	$camIPs = explode(',', $_SERVER['camIPs']);
 	$camAuths = explode(',', $_SERVER['camAuths']);
+	$camVersions = explode(',', $_SERVER['camVersions'] ?? null);
 
 
 	$action = $_REQUEST['action'];
@@ -135,6 +136,17 @@
 		echo json_encode($allEvents);
 	}
 
+	function camUrl($camIndex)
+	{
+		// If camVersions is set to 1, use new ISAPI URL
+		if (($camVersions[$camIndex] ?? null) == 1) {
+			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/102/picture';
+		} else {
+			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+		}
+		return $url;
+	}
+
 	function videopicture($camIPs, $camAuths)
 	{
 		session_start();
@@ -142,13 +154,13 @@
 			if ( isset($_REQUEST['index']) ) {
 				$camIndex = $_REQUEST['index'];
 				header('Content-Type: image/jpeg');
-				$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+				$url = camUrl($camIndex);
 				$fh = readfile($url);
 				echo $fh;
 			} else {
 				$stack = new Imagick();
 				foreach ($camIPs as $index => $ip) {
-					$url = 'http://'.$camAuths[$index].'@'.$ip.'/Streaming/channels/102/picture';
+					$url = camUrl($camIndex);
 					$image = file_get_contents($url);
 					$img = new Imagick();
 					$img->readImageBlob($image);
