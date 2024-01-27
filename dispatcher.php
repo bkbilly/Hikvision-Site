@@ -11,6 +11,7 @@
 	$camNames = explode(',', $_SERVER['camNames']);
 	$camIPs = explode(',', $_SERVER['camIPs']);
 	$camAuths = explode(',', $_SERVER['camAuths']);
+	$camVersions = explode(',', $_SERVER['camVersions'] ?? null);
 
 
 	$action = $_REQUEST['action'];
@@ -22,7 +23,7 @@
 		case 'login' : login(); break;
 		case 'logout' : logout(); break;
 		case 'usrStatus' : usrStatus(); break;
-		case 'videopicture' : videopicture($camIPs, $camAuths); break;
+		case 'videopicture' : videopicture($camIPs, $camAuths, $camVersions); break;
 		default: echo "Not an Option"; break;
 	}
 
@@ -135,21 +136,64 @@
 		echo json_encode($allEvents);
 	}
 
-	function videopicture($camIPs, $camAuths)
+	function videopicture($camIPs, $camAuths, $camVersions)
 	{
 		session_start();
 		if(isset($_SESSION['UserName'])){
 			if ( isset($_REQUEST['index']) ) {
 				$camIndex = $_REQUEST['index'];
 				header('Content-Type: image/jpeg');
-				$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
-				$fh = readfile($url);
-				echo $fh;
+
+				if (($camVersions[$camIndex] ?? null) == 1) {
+					$ch = curl_init();
+					$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
+					curl_setopt($ch, CURLOPT_URL, $url);
+					// curl_setopt($ch, CURLOPT_VERBOSE, true);
+					curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
+					curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+					curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+					curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+					curl_setopt($ch, CURLOPT_USERPWD, $camAuths[$camIndex]);
+
+					$result = curl_exec($ch);
+					if (curl_errno($ch)) {
+						error_log(curl_error($ch));
+					}
+					curl_close($ch);
+					echo $result;
+
+				} else {
+					$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+					$fh = readfile($url);
+					echo $fh;
+				}
 			} else {
 				$stack = new Imagick();
 				foreach ($camIPs as $index => $ip) {
-					$url = 'http://'.$camAuths[$index].'@'.$ip.'/Streaming/channels/102/picture';
-					$image = file_get_contents($url);
+
+					if (($camVersions[$index] ?? null) == 1) {
+						$ch = curl_init();
+						$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
+						curl_setopt($ch, CURLOPT_URL, $url);
+						// curl_setopt($ch, CURLOPT_VERBOSE, true);
+						curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
+						curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+						curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+						curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+						curl_setopt($ch, CURLOPT_USERPWD, $camAuths[$index]);
+
+						$result = curl_exec($ch);
+						if (curl_errno($ch)) {
+							error_log(curl_error($ch));
+						}
+						curl_close($ch);
+						$image = $result;
+
+					} else {
+						$url = 'http://'.$camAuths[$index].'@'.$ip.'/Streaming/channels/102/picture';
+						$image = file_get_contents($url);
+					}
+					
 					$img = new Imagick();
 					$img->readImageBlob($image);
 					$stack->addImage($img);
