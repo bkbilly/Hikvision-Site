@@ -136,18 +136,6 @@
 		echo json_encode($allEvents);
 	}
 
-	function camUrl($camIPs, $camAuths, $camVersions, $camIndex)
-	{
-		// If camVersions is set to 1, use new ISAPI URL
-		if (($camVersions[$camIndex] ?? null) == 1) {
-			$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
-		} else {
-			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
-		}
-		error_log($url);
-		return $url;
-	}
-
 	function videopicture($camIPs, $camAuths, $camVersions)
 	{
 		session_start();
@@ -155,12 +143,12 @@
 			if ( isset($_REQUEST['index']) ) {
 				$camIndex = $_REQUEST['index'];
 				header('Content-Type: image/jpeg');
-				$url = camUrl($camIPs, $camAuths, $camVersions, $camIndex);
 
 				if (($camVersions[$camIndex] ?? null) == 1) {
 					$ch = curl_init();
+					$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
 					curl_setopt($ch, CURLOPT_URL, $url);
-					curl_setopt($ch, CURLOPT_VERBOSE, true);
+					// curl_setopt($ch, CURLOPT_VERBOSE, true);
 					curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
 					curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 					curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
@@ -169,20 +157,43 @@
 
 					$result = curl_exec($ch);
 					if (curl_errno($ch)) {
-						echo 'Error:' . curl_error($ch);
+						error_log(curl_error($ch));
 					}
 					curl_close($ch);
 					echo $result;
-					
+
 				} else {
+					$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
 					$fh = readfile($url);
 					echo $fh;
 				}
 			} else {
 				$stack = new Imagick();
 				foreach ($camIPs as $index => $ip) {
-					$url = camUrl($camIPs, $camAuths, $camVersions, $camIndex);
-					$image = file_get_contents($url);
+
+					if (($camVersions[$index] ?? null) == 1) {
+						$ch = curl_init();
+						$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
+						curl_setopt($ch, CURLOPT_URL, $url);
+						// curl_setopt($ch, CURLOPT_VERBOSE, true);
+						curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
+						curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+						curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+						curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+						curl_setopt($ch, CURLOPT_USERPWD, $camAuths[$index]);
+
+						$result = curl_exec($ch);
+						if (curl_errno($ch)) {
+							error_log(curl_error($ch));
+						}
+						curl_close($ch);
+						$image = $result;
+
+					} else {
+						$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
+						$image = file_get_contents($url);
+					}
+					
 					$img = new Imagick();
 					$img->readImageBlob($image);
 					$stack->addImage($img);
