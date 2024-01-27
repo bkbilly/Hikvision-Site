@@ -1,0 +1,14 @@
+version: '3'
+services:
+  hikvision_site:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: hikvision_site
+    restart: unless-stopped
+    volumes:
+      - ./.htaccess:/var/www/html/.htaccess
+      - ./dispatcher.php:/var/www/html/dispatcher.php
+      - /mnt:/hikvision
+    ports:
+      - 80:80

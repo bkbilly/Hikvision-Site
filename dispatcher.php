@@ -23,7 +23,7 @@
 		case 'login' : login(); break;
 		case 'logout' : logout(); break;
 		case 'usrStatus' : usrStatus(); break;
-		case 'videopicture' : videopicture($camIPs, $camAuths); break;
+		case 'videopicture' : videopicture($camIPs, $camAuths, $camVersions); break;
 		default: echo "Not an Option"; break;
 	}
 
@@ -136,31 +136,52 @@
 		echo json_encode($allEvents);
 	}
 
-	function camUrl($camIndex)
+	function camUrl($camIPs, $camAuths, $camVersions, $camIndex)
 	{
 		// If camVersions is set to 1, use new ISAPI URL
 		if (($camVersions[$camIndex] ?? null) == 1) {
-			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/102/picture';
+			$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
 		} else {
 			$url = 'http://'.$camAuths[$camIndex].'@'.$camIPs[$camIndex].'/Streaming/channels/102/picture';
 		}
+		error_log($url);
 		return $url;
 	}
 
-	function videopicture($camIPs, $camAuths)
+	function videopicture($camIPs, $camAuths, $camVersions)
 	{
 		session_start();
 		if(isset($_SESSION['UserName'])){
 			if ( isset($_REQUEST['index']) ) {
 				$camIndex = $_REQUEST['index'];
 				header('Content-Type: image/jpeg');
-				$url = camUrl($camIndex);
-				$fh = readfile($url);
-				echo $fh;
+				$url = camUrl($camIPs, $camAuths, $camVersions, $camIndex);
+
+				if (($camVersions[$camIndex] ?? null) == 1) {
+					$ch = curl_init();
+					curl_setopt($ch, CURLOPT_URL, $url);
+					curl_setopt($ch, CURLOPT_VERBOSE, true);
+					curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
+					curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+					curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+					curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+					curl_setopt($ch, CURLOPT_USERPWD, $camAuths[$camIndex]);
+
+					$result = curl_exec($ch);
+					if (curl_errno($ch)) {
+						echo 'Error:' . curl_error($ch);
+					}
+					curl_close($ch);
+					echo $result;
+					
+				} else {
+					$fh = readfile($url);
+					echo $fh;
+				}
 			} else {
 				$stack = new Imagick();
 				foreach ($camIPs as $index => $ip) {
-					$url = camUrl($camIndex);
+					$url = camUrl($camIPs, $camAuths, $camVersions, $camIndex);
 					$image = file_get_contents($url);
 					$img = new Imagick();
 					$img->readImageBlob($image);
