@@ -173,7 +173,7 @@
 
 					if (($camVersions[$index] ?? null) == 1) {
 						$ch = curl_init();
-						$url = 'http://'.$camIPs[$camIndex].'/ISAPI/Streaming/Channels/101/picture';
+						$url = 'http://'.$ip.'/ISAPI/Streaming/Channels/101/picture';
 						curl_setopt($ch, CURLOPT_URL, $url);
 						// curl_setopt($ch, CURLOPT_VERBOSE, true);
 						curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
