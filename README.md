@@ -13,6 +13,7 @@ This Web Application is a nice UI for all your hikvision cameras. It supports Lo
 * At the **SetEnv camNames** add a comma sepperated list of name the camera names which should be the same size as the camPaths.
 * At the **SetEnv camIPs** add a comma sepperated list of the IPs of each camera.
 * At the **SetEnv camAuths** add a comma sepperated list of the usernames/passwords for the authentication in this format: "admin:password"
+* At the **SetEnv camVersions** *(optional)* add a comma sepperated list of whether the Hikvision/HiLook cameras are on newer firmware and need /ISAPI/ paths. 0 for old, 1 for ISAPI/new - like "0,1" for an old and new camera, or "1,1" for two new cameras.
 
 
 ### Dependencies
