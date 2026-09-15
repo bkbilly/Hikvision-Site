@@ -1,0 +1,22 @@
+services:
+  hikvision-hub:
+    image: bkbillybk/hikvision_site:latest
+    build: .
+    container_name: hikvision-hub
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persistent configuration & SQLite database
+      - ./data:/app/data
+      # Mount your NAS or SD card recording storage folders here
+      - /mnt/hikvision:/mnt/hikvision:ro
+    environment:
+      - PORT=8080
+      - DATA_DIR=/app/data
+      - INITIAL_USER=admin
+      - INITIAL_PASS=admin
+      - TZ=UTC
+    # Optional hardware acceleration (Intel QuickSync / VAAPI)
+    # devices:
+    #   - /dev/dri:/dev/dri

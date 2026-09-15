@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="50%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Rounded Container -->
+  <rect width="32" height="32" rx="7" fill="url(#bg)" stroke="#334155" stroke-width="1.2"/>
+  
+  <!-- CCTV / Camera Shield Symbol -->
+  <path d="M16 4.5 L25 8 V15.5 C25 21.2 21.2 26.2 16 27.5 C10.8 26.2 7 21.2 7 15.5 V8 Z" 
+        fill="url(#accent)" fill-opacity="0.18" 
+        stroke="url(#accent)" stroke-width="1.6" stroke-linejoin="round"/>
+        
+  <!-- Camera Lens Outer Ring -->
+  <circle cx="16" cy="15" r="5.2" fill="#0f172a" stroke="url(#accent)" stroke-width="1.4"/>
+  
+  <!-- Lens Core -->
+  <circle cx="16" cy="15" r="3" fill="url(#lens)"/>
+  
+  <!-- Lens Reflection Highlight -->
+  <circle cx="14.9" cy="13.9" r="1" fill="#ffffff" opacity="0.85"/>
+  <circle cx="17.1" cy="16.1" r="0.5" fill="#38bdf8" opacity="0.9"/>
+  
+  <!-- Status Indicator (Active Green LED) -->
+  <circle cx="21" cy="10" r="1.1" fill="#10b981"/>
+</svg>
