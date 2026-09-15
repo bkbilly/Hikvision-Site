@@ -169,6 +169,124 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 	return cacheFilePath, nil
 }
 
+// GetSegmentThumbnail extracts a single JPEG frame at the start of the recording segment.
+func (s *Streamer) GetSegmentThumbnail(dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32) (string, error) {
+	videoFileName := fmt.Sprintf("hiv%05d.mp4", fileNum)
+	videoFilePath := filepath.Join(dataDirPath, videoFileName)
+
+	if _, err := os.Stat(videoFilePath); err != nil {
+		return "", fmt.Errorf("video chunk file %s not found: %w", videoFilePath, err)
+	}
+
+	thumbFileName := fmt.Sprintf("thumb_%d_%d_%d_%d.jpg", dataDirNum, fileNum, startOffset, endOffset)
+	thumbFilePath := filepath.Join(s.cacheDir, thumbFileName)
+
+	// Check if already generated and cached
+	if fi, err := os.Stat(thumbFilePath); err == nil && fi.Size() > 0 {
+		return thumbFilePath, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Double check after acquiring lock
+	if fi, err := os.Stat(thumbFilePath); err == nil && fi.Size() > 0 {
+		return thumbFilePath, nil
+	}
+
+	// First check if the MP4 clip is already transcoded
+	origClipPath := filepath.Join(s.cacheDir, fmt.Sprintf("clip_%d_%d_%d_%d_orig.mp4", dataDirNum, fileNum, startOffset, endOffset))
+	if fi, err := os.Stat(origClipPath); err == nil && fi.Size() > 0 {
+		cmd := exec.Command("ffmpeg", "-y", "-ss", "00:00:00.000", "-i", origClipPath, "-vframes", "1", "-q:v", "2", thumbFilePath)
+		if err := cmd.Run(); err == nil {
+			return thumbFilePath, nil
+		}
+	}
+
+	// Read slice from raw video chunk
+	srcFile, err := os.Open(videoFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open video source: %w", err)
+	}
+	defer srcFile.Close()
+
+	if _, err := srcFile.Seek(int64(startOffset), io.SeekStart); err != nil {
+		return "", fmt.Errorf("failed to seek in video source: %w", err)
+	}
+
+	length := int64(endOffset) - int64(startOffset)
+	if length <= 0 {
+		return "", fmt.Errorf("invalid offset range: start=%d, end=%d", startOffset, endOffset)
+	}
+
+	sliceLen := length
+	if sliceLen > 3*1024*1024 {
+		sliceLen = 3 * 1024 * 1024
+	}
+
+	tempRawPath := filepath.Join(s.cacheDir, fmt.Sprintf("raw_thumb_%d_%d_%d_%d.dat", dataDirNum, fileNum, startOffset, endOffset))
+	rawFile, err := os.OpenFile(tempRawPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp raw file: %w", err)
+	}
+
+	limitReader := io.LimitReader(srcFile, sliceLen)
+	if _, err := io.Copy(rawFile, limitReader); err != nil {
+		rawFile.Close()
+		_ = os.Remove(tempRawPath)
+		return "", fmt.Errorf("failed to extract raw stream slice: %w", err)
+	}
+	rawFile.Close()
+	defer os.Remove(tempRawPath)
+
+	tempOutPath := thumbFilePath + ".tmp.jpg"
+	_ = os.Remove(tempOutPath)
+
+	cmd := exec.Command("ffmpeg", "-y", "-i", tempRawPath, "-vframes", "1", "-q:v", "2", tempOutPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		_ = os.Remove(tempOutPath)
+		// Fallback to generating the clip and extracting from it
+		mp4Path, mp4Err := s.GetSegmentMP4(dataDirPath, dataDirNum, fileNum, startOffset, endOffset, "orig")
+		if mp4Err != nil {
+			return "", fmt.Errorf("ffmpeg thumbnail extraction failed: %w: %s", mp4Err, stderr.String())
+		}
+		cmd2 := exec.Command("ffmpeg", "-y", "-ss", "00:00:00.000", "-i", mp4Path, "-vframes", "1", "-q:v", "2", tempOutPath)
+		if err2 := cmd2.Run(); err2 != nil {
+			_ = os.Remove(tempOutPath)
+			return "", fmt.Errorf("ffmpeg thumbnail extraction from mp4 failed: %w", err2)
+		}
+	}
+
+	if err := os.Rename(tempOutPath, thumbFilePath); err != nil {
+		_ = os.Remove(tempOutPath)
+		return "", fmt.Errorf("failed to commit thumbnail: %w", err)
+	}
+
+	return thumbFilePath, nil
+}
+
+// ServeThumbnail serves the JPEG thumbnail with caching headers.
+func (s *Streamer) ServeThumbnail(w http.ResponseWriter, r *http.Request, filePath string) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		http.Error(w, "Thumbnail not found", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		http.Error(w, "Could not stat thumbnail", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	http.ServeContent(w, r, fi.Name(), fi.ModTime(), file)
+}
+
 // ServeVideo serves the MP4 file using standard HTTP Range handling.
 func (s *Streamer) ServeVideo(w http.ResponseWriter, r *http.Request, filePath string) {
 	file, err := os.Open(filePath)

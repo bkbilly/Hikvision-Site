@@ -82,6 +82,7 @@ func SetupRouter(cfg Config) http.Handler {
 			r.Get("/cameras/{id}/live", camHandler.StreamLive)
 			r.Get("/ws/live", wsHandler.StreamLiveWS)
 			r.Get("/cameras/{id}/video", videoHandler.StreamClip)
+			r.Get("/cameras/{id}/thumbnail", videoHandler.StreamThumbnail)
 
 			// Event routes
 			r.Get("/events", eventHandler.GetEvents)

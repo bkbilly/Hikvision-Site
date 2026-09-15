@@ -92,6 +92,7 @@ Hikvision Web Hub natively supports both legacy and modern Hikvision storage str
 | `POST` | `/api/cameras/test-connection` | Test live camera connectivity |
 | `POST` | `/api/cameras/discover-path` | Scan storage path for `info.bin` / data directories |
 | `GET` | `/api/cameras/:id/snapshot` | Live JPEG snapshot proxy |
+| `GET` | `/api/cameras/:id/thumbnail` | Fast JPEG video frame thumbnail extractor |
 | `GET` | `/api/cameras/:id/video` | Stream video clip segment with HTTP Range support |
 | `GET` | `/api/events` | Query recording events in timestamp range |
 | `GET` | `/api/system/status` | System health, uptime, and cache metrics |
