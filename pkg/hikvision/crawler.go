@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bkbilly/hikvision-site/pkg/db"
-	"github.com/bkbilly/hikvision-site/pkg/models"
+	"github.com/bkbilly/hikvision-hub/pkg/db"
+	"github.com/bkbilly/hikvision-hub/pkg/models"
 )
 
 type Crawler struct {

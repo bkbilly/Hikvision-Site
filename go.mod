@@ -1,4 +1,4 @@
-module github.com/bkbilly/hikvision-site
+module github.com/bkbilly/hikvision-hub
 
 go 1.26.0
 

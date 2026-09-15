@@ -32,7 +32,7 @@ docker run -d \
   -p 8080:8080 \
   -v $(pwd)/data:/app/data \
   -v /mnt/hikvision:/mnt/hikvision:ro \
-  bkbillybk/hikvision_site:latest
+  bkbillybk/hikvision-hub:latest
 ```
 
 Open `http://localhost:8080` in your browser.

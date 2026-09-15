@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bkbilly/hikvision-site/pkg/auth"
-	"github.com/bkbilly/hikvision-site/pkg/db"
+	"github.com/bkbilly/hikvision-hub/pkg/auth"
+	"github.com/bkbilly/hikvision-hub/pkg/db"
 )
 
 type AuthHandler struct {

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkbilly/hikvision-site/pkg/db"
-	"github.com/bkbilly/hikvision-site/pkg/hikvision"
-	"github.com/bkbilly/hikvision-site/pkg/models"
+	"github.com/bkbilly/hikvision-hub/pkg/db"
+	"github.com/bkbilly/hikvision-hub/pkg/hikvision"
+	"github.com/bkbilly/hikvision-hub/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
 

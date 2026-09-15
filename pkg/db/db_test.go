@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bkbilly/hikvision-site/pkg/models"
+	"github.com/bkbilly/hikvision-hub/pkg/models"
 )
 
 func TestDatabaseOperations(t *testing.T) {

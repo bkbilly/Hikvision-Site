@@ -27,7 +27,7 @@ type AuthManager struct {
 
 func NewAuthManager(secret string) *AuthManager {
 	if secret == "" {
-		secret = "hikvision-site-default-secret-key-change-in-prod"
+		secret = "hikvision-hub-default-secret-key-change-in-prod"
 	}
 	return &AuthManager{
 		jwtSecret: []byte(secret),

@@ -5,9 +5,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/bkbilly/hikvision-site/pkg/db"
-	"github.com/bkbilly/hikvision-site/pkg/hikvision"
-	"github.com/bkbilly/hikvision-site/pkg/models"
+	"github.com/bkbilly/hikvision-hub/pkg/db"
+	"github.com/bkbilly/hikvision-hub/pkg/hikvision"
+	"github.com/bkbilly/hikvision-hub/pkg/models"
 )
 
 type SystemHandler struct {

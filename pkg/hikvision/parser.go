@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkbilly/hikvision-site/pkg/models"
+	"github.com/bkbilly/hikvision-hub/pkg/models"
 	_ "modernc.org/sqlite"
 )
 

@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bkbilly/hikvision-site/pkg/auth"
-	"github.com/bkbilly/hikvision-site/pkg/db"
-	"github.com/bkbilly/hikvision-site/pkg/hikvision"
+	"github.com/bkbilly/hikvision-hub/pkg/auth"
+	"github.com/bkbilly/hikvision-hub/pkg/db"
+	"github.com/bkbilly/hikvision-hub/pkg/hikvision"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"

@@ -1,6 +1,6 @@
 services:
   hikvision-hub:
-    image: bkbillybk/hikvision_site:latest
+    image: bkbillybk/hikvision-hub:latest
     build: .
     container_name: hikvision-hub
     restart: unless-stopped

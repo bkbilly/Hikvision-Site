@@ -20,7 +20,7 @@ docker:
 	docker compose up --build -d
 
 docker-build:
-	docker build -t bkbillybk/hikvision_site:latest .
+	docker build -t bkbillybk/hikvision-hub:latest .
 
 clean:
 	rm -rf hikvision-hub data/cache

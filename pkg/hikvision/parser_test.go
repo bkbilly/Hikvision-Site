@@ -141,27 +141,29 @@ func TestHikvisionStaleSegmentsIgnored(t *testing.T) {
 
 	segmentRecords := make([]byte, 2*256*SegmentLen)
 
+	nowUnix := uint64(time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC).Unix())
+
 	// File 0 - Slot 0 (valid segment)
 	seg0 := segmentRecords[0:SegmentLen]
 	seg0[0] = 1
-	binary.LittleEndian.PutUint64(seg0[8:16], 1000)
-	binary.LittleEndian.PutUint64(seg0[16:24], 1060)
+	binary.LittleEndian.PutUint64(seg0[8:16], nowUnix)
+	binary.LittleEndian.PutUint64(seg0[16:24], nowUnix+60)
 	binary.LittleEndian.PutUint32(seg0[40:44], 100)
 	binary.LittleEndian.PutUint32(seg0[44:48], 200)
 
 	// File 0 - Slot 1 (STALE segment that should NOT be read)
 	seg1 := segmentRecords[SegmentLen : 2*SegmentLen]
 	seg1[0] = 1
-	binary.LittleEndian.PutUint64(seg1[8:16], 5000)
-	binary.LittleEndian.PutUint64(seg1[16:24], 5060)
+	binary.LittleEndian.PutUint64(seg1[8:16], nowUnix+5000)
+	binary.LittleEndian.PutUint64(seg1[16:24], nowUnix+5060)
 	binary.LittleEndian.PutUint32(seg1[40:44], 300)
 	binary.LittleEndian.PutUint32(seg1[44:48], 400)
 
 	// File 1 - Slot 0 (STALE segment in inactive file that should NOT be read)
 	file1Seg0 := segmentRecords[256*SegmentLen : 256*SegmentLen+SegmentLen]
 	file1Seg0[0] = 1
-	binary.LittleEndian.PutUint64(file1Seg0[8:16], 9000)
-	binary.LittleEndian.PutUint64(file1Seg0[16:24], 9060)
+	binary.LittleEndian.PutUint64(file1Seg0[8:16], nowUnix+9000)
+	binary.LittleEndian.PutUint64(file1Seg0[16:24], nowUnix+9060)
 	binary.LittleEndian.PutUint32(file1Seg0[40:44], 500)
 	binary.LittleEndian.PutUint32(file1Seg0[44:48], 600)
 
@@ -188,7 +190,7 @@ func TestHikvisionStaleSegmentsIgnored(t *testing.T) {
 		t.Fatalf("Expected exactly 1 valid segment (stale segments skipped), got %d: %+v", len(segments), segments)
 	}
 
-	if segments[0].StartTime.Unix() != 1000 || segments[0].EndTime.Unix() != 1060 {
+	if segments[0].StartTime.Unix() != int64(nowUnix) || segments[0].EndTime.Unix() != int64(nowUnix+60) {
 		t.Fatalf("Unexpected segment: %+v", segments[0])
 	}
 }
