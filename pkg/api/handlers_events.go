@@ -39,6 +39,9 @@ func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	// Parse camera IDs
 	var cameraIDs []int64
 	camParam := q.Get("cameras")
+	if camParam == "" {
+		camParam = q.Get("camera_id")
+	}
 	if camParam != "" {
 		for _, s := range strings.Split(camParam, ",") {
 			s = strings.TrimSpace(s)
@@ -65,30 +68,26 @@ func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	// Parse Start Date / Time
 	var startTime time.Time
-	startParam := q.Get("start")
-	if startParam != "" {
-		if unixSec, err := strconv.ParseInt(startParam, 10, 64); err == nil {
-			startTime = time.Unix(unixSec, 0).UTC()
-		} else if t, err := time.Parse(time.RFC3339, startParam); err == nil {
-			startTime = t.UTC()
-		}
+	startStr := q.Get("start")
+	if startStr == "" {
+		startStr = q.Get("start_time")
 	}
-	if startTime.IsZero() {
+	if t, ok := parseFlexibleTime(startStr); ok {
+		startTime = t
+	} else {
 		// Default: past 24 hours
 		startTime = time.Now().UTC().Add(-24 * time.Hour)
 	}
 
 	// Parse End Date / Time
 	var endTime time.Time
-	endParam := q.Get("end")
-	if endParam != "" {
-		if unixSec, err := strconv.ParseInt(endParam, 10, 64); err == nil {
-			endTime = time.Unix(unixSec, 0).UTC()
-		} else if t, err := time.Parse(time.RFC3339, endParam); err == nil {
-			endTime = t.UTC()
-		}
+	endStr := q.Get("end")
+	if endStr == "" {
+		endStr = q.Get("end_time")
 	}
-	if endTime.IsZero() {
+	if t, ok := parseFlexibleTime(endStr); ok {
+		endTime = t
+	} else {
 		endTime = time.Now().UTC().Add(1 * time.Hour)
 	}
 
@@ -151,3 +150,27 @@ func (h *EventHandler) GetRecordingDates(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusOK, dates)
 }
+
+func parseFlexibleTime(val string) (time.Time, bool) {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return time.Time{}, false
+	}
+	if unixSec, err := strconv.ParseInt(val, 10, 64); err == nil {
+		return time.Unix(unixSec, 0).UTC(), true
+	}
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+	for _, fmtStr := range formats {
+		if t, err := time.Parse(fmtStr, val); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+

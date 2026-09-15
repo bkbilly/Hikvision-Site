@@ -10,38 +10,98 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 type Streamer struct {
-	cacheDir string
-	mu       sync.Mutex
+	cacheDir   string
+	ffmpegSem  chan struct{}
+	clipGroup  singleflight.Group
+	thumbGroup singleflight.Group
+	pruneMu    sync.Mutex
 }
 
 func NewStreamer(cacheDir string) (*Streamer, error) {
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
-	return &Streamer{cacheDir: cacheDir}, nil
+
+	maxWorkers := runtime.NumCPU()
+	if maxWorkers < 2 {
+		maxWorkers = 2
+	} else if maxWorkers > 6 {
+		maxWorkers = 6
+	}
+
+	return &Streamer{
+		cacheDir:  cacheDir,
+		ffmpegSem: make(chan struct{}, maxWorkers),
+	}, nil
 }
 
 func (s *Streamer) GetCacheDir() string {
 	return s.cacheDir
 }
 
-// GetSegmentMP4 extracts the segment and remuxes/transcodes it to an MP4 file.
-// Returns the absolute path of the ready MP4 file.
-func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32, resolution string) (string, error) {
-	videoFileName := fmt.Sprintf("hiv%05d.mp4", fileNum)
-	videoFilePath := filepath.Join(dataDirPath, videoFileName)
-
-	if _, err := os.Stat(videoFilePath); err != nil {
-		return "", fmt.Errorf("video chunk file %s not found: %w", videoFilePath, err)
+// findSyncOffset scans up to 2MB from startOffset to locate the first valid MPEG-PS
+// pack header (00 00 01 ba) or PES/NAL start code to avoid unaligned corrupt prefix bytes.
+func findSyncOffset(r io.ReaderAt, startOffset int64, length int64) int64 {
+	scanSize := int64(2 * 1024 * 1024)
+	if length > 0 && length < scanSize {
+		scanSize = length
+	}
+	if scanSize <= 4 {
+		return 0
 	}
 
+	buf := make([]byte, scanSize)
+	n, err := r.ReadAt(buf, startOffset)
+	if err != nil && err != io.EOF && n == 0 {
+		return 0
+	}
+	buf = buf[:n]
+
+	// Already aligned to MPEG-PS pack header
+	if len(buf) >= 4 && buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01 && buf[3] == 0xba {
+		return 0
+	}
+
+	// 1. Search for MPEG-PS pack header: 00 00 01 ba
+	psHeader := []byte{0x00, 0x00, 0x01, 0xba}
+	if idx := bytes.Index(buf, psHeader); idx != -1 {
+		return int64(idx)
+	}
+
+	// 2. Search for PES video packet header: 00 00 01 e0
+	pesHeader := []byte{0x00, 0x00, 0x01, 0xe0}
+	if idx := bytes.Index(buf, pesHeader); idx != -1 {
+		return int64(idx)
+	}
+
+	// 3. Search for H.264 4-byte start code: 00 00 00 01
+	nalHeader4 := []byte{0x00, 0x00, 0x00, 0x01}
+	if idx := bytes.Index(buf, nalHeader4); idx != -1 {
+		return int64(idx)
+	}
+
+	// 4. Search for standard 3-byte start code: 00 00 01
+	nalHeader3 := []byte{0x00, 0x00, 0x01}
+	if idx := bytes.Index(buf, nalHeader3); idx != -1 {
+		return int64(idx)
+	}
+
+	return 0
+}
+
+// GetSegmentMP4 extracts the segment and remuxes/transcodes it to an MP4 file.
+// Returns the absolute path of the ready MP4 file.
+func (s *Streamer) GetSegmentMP4(ctx context.Context, dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32, resolution string) (string, error) {
 	resKey := resolution
 	if resKey == "" || resKey == "null" || resKey == "original" {
 		resKey = "orig"
@@ -50,28 +110,34 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 	cacheFileName := fmt.Sprintf("clip_%d_%d_%d_%d_%s.mp4", dataDirNum, fileNum, startOffset, endOffset, resKey)
 	cacheFilePath := filepath.Join(s.cacheDir, cacheFileName)
 
-	// Check if already transcoded and cached
+	// Quick check if already transcoded and cached on disk
 	if fi, err := os.Stat(cacheFilePath); err == nil && fi.Size() > 0 {
 		return cacheFilePath, nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Deduplicate concurrent requests for the exact same clip
+	flightKey := fmt.Sprintf("mp4_%d_%d_%d_%d_%s", dataDirNum, fileNum, startOffset, endOffset, resKey)
+	res, err, _ := s.clipGroup.Do(flightKey, func() (interface{}, error) {
+		// Double check after singleflight lock
+		if fi, err := os.Stat(cacheFilePath); err == nil && fi.Size() > 0 {
+			return cacheFilePath, nil
+		}
 
-	// Double check after acquiring lock
-	if fi, err := os.Stat(cacheFilePath); err == nil && fi.Size() > 0 {
-		return cacheFilePath, nil
-	}
+		return s.extractAndRemuxMP4(ctx, dataDirPath, dataDirNum, fileNum, startOffset, endOffset, resKey, cacheFilePath)
+	})
 
-	// Open source chunk file and seek to startOffset
-	srcFile, err := os.Open(videoFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open video source: %w", err)
+		return "", err
 	}
-	defer srcFile.Close()
+	return res.(string), nil
+}
 
-	if _, err := srcFile.Seek(int64(startOffset), io.SeekStart); err != nil {
-		return "", fmt.Errorf("failed to seek in video source: %w", err)
+func (s *Streamer) extractAndRemuxMP4(ctx context.Context, dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32, resKey, cacheFilePath string) (string, error) {
+	videoFileName := fmt.Sprintf("hiv%05d.mp4", fileNum)
+	videoFilePath := filepath.Join(dataDirPath, videoFileName)
+
+	if _, err := os.Stat(videoFilePath); err != nil {
+		return "", fmt.Errorf("video chunk file %s not found: %w", videoFilePath, err)
 	}
 
 	length := int64(endOffset) - int64(startOffset)
@@ -79,14 +145,41 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 		return "", fmt.Errorf("invalid offset range: start=%d, end=%d", startOffset, endOffset)
 	}
 
-	// 1. Extract raw stream slice to a temporary .dat file (allows FFmpeg format auto-probe for MPEG-PS / H.264)
-	tempRawPath := filepath.Join(s.cacheDir, fmt.Sprintf("raw_%d_%d_%d_%d.dat", dataDirNum, fileNum, startOffset, endOffset))
+	// Acquire worker slot with cancellation support
+	select {
+	case s.ffmpegSem <- struct{}{}:
+		defer func() { <-s.ffmpegSem }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	// Open source chunk file and align to valid start code
+	srcFile, err := os.Open(videoFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open video source: %w", err)
+	}
+	defer srcFile.Close()
+
+	syncDelta := findSyncOffset(srcFile, int64(startOffset), length)
+	actualStart := int64(startOffset) + syncDelta
+	actualLength := length - syncDelta
+	if actualLength <= 0 {
+		actualStart = int64(startOffset)
+		actualLength = length
+	}
+
+	if _, err := srcFile.Seek(actualStart, io.SeekStart); err != nil {
+		return "", fmt.Errorf("failed to seek in video source: %w", err)
+	}
+
+	// 1. Extract raw stream slice to a temporary .dat file
+	tempRawPath := filepath.Join(s.cacheDir, fmt.Sprintf("raw_%d_%d_%d_%d_%d.dat", dataDirNum, fileNum, startOffset, endOffset, time.Now().UnixNano()))
 	rawFile, err := os.OpenFile(tempRawPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp raw file: %w", err)
 	}
 
-	limitReader := io.LimitReader(srcFile, length)
+	limitReader := io.LimitReader(srcFile, actualLength)
 	buf := make([]byte, 64*1024)
 	if _, err := io.CopyBuffer(rawFile, limitReader, buf); err != nil {
 		rawFile.Close()
@@ -97,13 +190,18 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 	defer os.Remove(tempRawPath)
 
 	// 2. Remux / Transcode to standard MP4 with FFmpeg
-	tempOutPath := cacheFilePath + ".tmp.mp4"
+	tempOutPath := cacheFilePath + fmt.Sprintf(".tmp_%d.mp4", time.Now().UnixNano())
 	_ = os.Remove(tempOutPath)
+	defer os.Remove(tempOutPath)
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
 	var cmd *exec.Cmd
 	if resKey == "orig" {
 		// Fast stream copy (usually 10-30ms)
-		cmd = exec.Command(
+		cmd = exec.CommandContext(
+			cmdCtx,
 			"ffmpeg", "-y",
 			"-fflags", "+genpts",
 			"-i", tempRawPath,
@@ -117,12 +215,13 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 		)
 	} else {
 		// Transcode to specific resolution
-		cmd = exec.Command(
+		cmd = exec.CommandContext(
+			cmdCtx,
 			"ffmpeg", "-y",
 			"-fflags", "+genpts",
 			"-i", tempRawPath,
 			"-threads", "auto",
-			"-s", resolution,
+			"-s", resKey,
 			"-c:v", "libx264",
 			"-preset", "veryfast",
 			"-crf", "23",
@@ -141,7 +240,8 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 		log.Printf("[Streamer] Remux copy failed (%v): %s", err, stderr.String())
 		// If copy failed, fall back to ultrafast transcode
 		var fallbackStderr bytes.Buffer
-		fallbackCmd := exec.Command(
+		fallbackCmd := exec.CommandContext(
+			cmdCtx,
 			"ffmpeg", "-y",
 			"-fflags", "+genpts",
 			"-i", tempRawPath,
@@ -157,7 +257,6 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 		)
 		fallbackCmd.Stderr = &fallbackStderr
 		if fallbackErr := fallbackCmd.Run(); fallbackErr != nil {
-			_ = os.Remove(tempOutPath)
 			return "", fmt.Errorf("ffmpeg remuxing and fallback failed: %w (stderr: %s)", fallbackErr, fallbackStderr.String())
 		}
 	}
@@ -169,8 +268,39 @@ func (s *Streamer) GetSegmentMP4(dataDirPath string, dataDirNum int, fileNum uin
 	return cacheFilePath, nil
 }
 
-// GetSegmentThumbnail extracts a single JPEG frame at the start of the recording segment.
-func (s *Streamer) GetSegmentThumbnail(dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32) (string, error) {
+// GetSegmentThumbnail extracts a single JPEG frame at the specified position ("middle" or "start").
+func (s *Streamer) GetSegmentThumbnail(ctx context.Context, dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32, position string) (string, error) {
+	posKey := position
+	if posKey != "start" && posKey != "middle" {
+		posKey = "middle"
+	}
+
+	thumbFileName := fmt.Sprintf("thumb_%d_%d_%d_%d_%s.jpg", dataDirNum, fileNum, startOffset, endOffset, posKey)
+	thumbFilePath := filepath.Join(s.cacheDir, thumbFileName)
+
+	// Quick check if already generated and cached on disk
+	if fi, err := os.Stat(thumbFilePath); err == nil && fi.Size() > 0 {
+		return thumbFilePath, nil
+	}
+
+	// Deduplicate concurrent requests for the exact same thumbnail
+	flightKey := fmt.Sprintf("thumb_%d_%d_%d_%d_%s", dataDirNum, fileNum, startOffset, endOffset, posKey)
+	res, err, _ := s.thumbGroup.Do(flightKey, func() (interface{}, error) {
+		// Double check after singleflight lock
+		if fi, err := os.Stat(thumbFilePath); err == nil && fi.Size() > 0 {
+			return thumbFilePath, nil
+		}
+
+		return s.extractThumbnail(ctx, dataDirPath, dataDirNum, fileNum, startOffset, endOffset, posKey, thumbFilePath)
+	})
+
+	if err != nil {
+		return "", err
+	}
+	return res.(string), nil
+}
+
+func (s *Streamer) extractThumbnail(ctx context.Context, dataDirPath string, dataDirNum int, fileNum uint32, startOffset, endOffset uint32, position string, thumbFilePath string) (string, error) {
 	videoFileName := fmt.Sprintf("hiv%05d.mp4", fileNum)
 	videoFilePath := filepath.Join(dataDirPath, videoFileName)
 
@@ -178,53 +308,79 @@ func (s *Streamer) GetSegmentThumbnail(dataDirPath string, dataDirNum int, fileN
 		return "", fmt.Errorf("video chunk file %s not found: %w", videoFilePath, err)
 	}
 
-	thumbFileName := fmt.Sprintf("thumb_%d_%d_%d_%d.jpg", dataDirNum, fileNum, startOffset, endOffset)
-	thumbFilePath := filepath.Join(s.cacheDir, thumbFileName)
-
-	// Check if already generated and cached
-	if fi, err := os.Stat(thumbFilePath); err == nil && fi.Size() > 0 {
-		return thumbFilePath, nil
+	length := int64(endOffset) - int64(startOffset)
+	if length <= 0 {
+		return "", fmt.Errorf("invalid offset range: start=%d, end=%d", startOffset, endOffset)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Double check after acquiring lock
-	if fi, err := os.Stat(thumbFilePath); err == nil && fi.Size() > 0 {
-		return thumbFilePath, nil
-	}
-
-	// First check if the MP4 clip is already transcoded
+	// 1. First check if the MP4 clip is already transcoded and cached
 	origClipPath := filepath.Join(s.cacheDir, fmt.Sprintf("clip_%d_%d_%d_%d_orig.mp4", dataDirNum, fileNum, startOffset, endOffset))
 	if fi, err := os.Stat(origClipPath); err == nil && fi.Size() > 0 {
-		cmd := exec.Command("ffmpeg", "-y", "-ss", "00:00:00.000", "-i", origClipPath, "-vframes", "1", "-q:v", "2", thumbFilePath)
+		tempOutPath := thumbFilePath + fmt.Sprintf(".tmp_%d.jpg", time.Now().UnixNano())
+		defer os.Remove(tempOutPath)
+
+		cmdCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		seekTime := "00:00:00.000"
+		if position == "middle" {
+			seekTime = "00:00:02.000"
+		}
+
+		cmd := exec.CommandContext(cmdCtx, "ffmpeg", "-y", "-ss", seekTime, "-i", origClipPath, "-vframes", "1", "-q:v", "3", tempOutPath)
 		if err := cmd.Run(); err == nil {
-			return thumbFilePath, nil
+			if err := os.Rename(tempOutPath, thumbFilePath); err == nil {
+				return thumbFilePath, nil
+			}
 		}
 	}
 
-	// Read slice from raw video chunk
+	// Acquire worker slot
+	select {
+	case s.ffmpegSem <- struct{}{}:
+		defer func() { <-s.ffmpegSem }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	// 2. Read slice from raw video chunk, aligned to start code
 	srcFile, err := os.Open(videoFilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open video source: %w", err)
 	}
 	defer srcFile.Close()
 
-	if _, err := srcFile.Seek(int64(startOffset), io.SeekStart); err != nil {
+	var readStart int64
+	var readLength int64
+
+	if position == "middle" && length > 3*1024*1024 {
+		// Seek to middle offset
+		midOffset := int64(startOffset) + (length / 2)
+		syncDelta := findSyncOffset(srcFile, midOffset, length/2)
+		readStart = midOffset + syncDelta
+		readLength = length - (readStart - int64(startOffset))
+	} else {
+		// Start frame
+		syncDelta := findSyncOffset(srcFile, int64(startOffset), length)
+		readStart = int64(startOffset) + syncDelta
+		readLength = length - syncDelta
+	}
+
+	if readLength <= 0 {
+		readStart = int64(startOffset)
+		readLength = length
+	}
+
+	if _, err := srcFile.Seek(readStart, io.SeekStart); err != nil {
 		return "", fmt.Errorf("failed to seek in video source: %w", err)
 	}
 
-	length := int64(endOffset) - int64(startOffset)
-	if length <= 0 {
-		return "", fmt.Errorf("invalid offset range: start=%d, end=%d", startOffset, endOffset)
+	sliceLen := readLength
+	if sliceLen > 2560*1024 {
+		sliceLen = 2560 * 1024
 	}
 
-	sliceLen := length
-	if sliceLen > 3*1024*1024 {
-		sliceLen = 3 * 1024 * 1024
-	}
-
-	tempRawPath := filepath.Join(s.cacheDir, fmt.Sprintf("raw_thumb_%d_%d_%d_%d.dat", dataDirNum, fileNum, startOffset, endOffset))
+	tempRawPath := filepath.Join(s.cacheDir, fmt.Sprintf("raw_thumb_%d_%d_%d_%d_%d.dat", dataDirNum, fileNum, startOffset, endOffset, time.Now().UnixNano()))
 	rawFile, err := os.OpenFile(tempRawPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp raw file: %w", err)
@@ -239,28 +395,46 @@ func (s *Streamer) GetSegmentThumbnail(dataDirPath string, dataDirNum int, fileN
 	rawFile.Close()
 	defer os.Remove(tempRawPath)
 
-	tempOutPath := thumbFilePath + ".tmp.jpg"
+	tempOutPath := thumbFilePath + fmt.Sprintf(".tmp_%d.jpg", time.Now().UnixNano())
 	_ = os.Remove(tempOutPath)
+	defer os.Remove(tempOutPath)
 
-	cmd := exec.Command("ffmpeg", "-y", "-i", tempRawPath, "-vframes", "1", "-q:v", "2", tempOutPath)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		_ = os.Remove(tempOutPath)
-		// Fallback to generating the clip and extracting from it
-		mp4Path, mp4Err := s.GetSegmentMP4(dataDirPath, dataDirNum, fileNum, startOffset, endOffset, "orig")
-		if mp4Err != nil {
-			return "", fmt.Errorf("ffmpeg thumbnail extraction failed: %w: %s", mp4Err, stderr.String())
-		}
-		cmd2 := exec.Command("ffmpeg", "-y", "-ss", "00:00:00.000", "-i", mp4Path, "-vframes", "1", "-q:v", "2", tempOutPath)
-		if err2 := cmd2.Run(); err2 != nil {
-			_ = os.Remove(tempOutPath)
-			return "", fmt.Errorf("ffmpeg thumbnail extraction from mp4 failed: %w", err2)
+	cmdCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	// Try MPEG-PS demuxer first (Hikvision raw stream format)
+	cmdMpeg := exec.CommandContext(cmdCtx, "ffmpeg", "-y", "-f", "mpeg", "-i", tempRawPath, "-vframes", "1", "-q:v", "3", tempOutPath)
+	if err := cmdMpeg.Run(); err == nil {
+		if err := os.Rename(tempOutPath, thumbFilePath); err == nil {
+			return thumbFilePath, nil
 		}
 	}
 
+	// Try auto format probing next
+	cmdAuto := exec.CommandContext(cmdCtx, "ffmpeg", "-y", "-i", tempRawPath, "-vframes", "1", "-q:v", "3", tempOutPath)
+	if err := cmdAuto.Run(); err == nil {
+		if err := os.Rename(tempOutPath, thumbFilePath); err == nil {
+			return thumbFilePath, nil
+		}
+	}
+
+	// Fallback to generating full clip and extracting from MP4
+	origClipPath = filepath.Join(s.cacheDir, fmt.Sprintf("clip_%d_%d_%d_%d_orig.mp4", dataDirNum, fileNum, startOffset, endOffset))
+	mp4Path, mp4Err := s.extractAndRemuxMP4(cmdCtx, dataDirPath, dataDirNum, fileNum, startOffset, endOffset, "orig", origClipPath)
+	if mp4Err != nil {
+		return "", fmt.Errorf("thumbnail extraction fallback failed: %w", mp4Err)
+	}
+
+	seekTime := "00:00:00.000"
+	if position == "middle" {
+		seekTime = "00:00:02.000"
+	}
+	cmdMp4 := exec.CommandContext(cmdCtx, "ffmpeg", "-y", "-ss", seekTime, "-i", mp4Path, "-vframes", "1", "-q:v", "3", tempOutPath)
+	if err := cmdMp4.Run(); err != nil {
+		return "", fmt.Errorf("thumbnail extraction from mp4 failed: %w", err)
+	}
+
 	if err := os.Rename(tempOutPath, thumbFilePath); err != nil {
-		_ = os.Remove(tempOutPath)
 		return "", fmt.Errorf("failed to commit thumbnail: %w", err)
 	}
 
@@ -283,7 +457,7 @@ func (s *Streamer) ServeThumbnail(w http.ResponseWriter, r *http.Request, filePa
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
 	http.ServeContent(w, r, fi.Name(), fi.ModTime(), file)
 }
 
@@ -326,8 +500,8 @@ func (s *Streamer) GetCacheSizeMB() int64 {
 
 // ClearCache removes all cached clips.
 func (s *Streamer) ClearCache() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
 
 	entries, err := os.ReadDir(s.cacheDir)
 	if err != nil {
@@ -349,8 +523,8 @@ type cacheFileInfo struct {
 
 // AutoPrune deletes old or expired cached MP4/tmp files and enforces max cache size limit.
 func (s *Streamer) AutoPrune(maxAge time.Duration, maxSizeBytes int64) (int, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
 
 	entries, err := os.ReadDir(s.cacheDir)
 	if err != nil {
@@ -374,7 +548,7 @@ func (s *Streamer) AutoPrune(maxAge time.Duration, maxSizeBytes int64) (int, int
 		}
 
 		// Delete temporary or orphaned .tmp files or files older than maxAge
-		if strings.HasSuffix(entry.Name(), ".tmp.mp4") || strings.HasSuffix(entry.Name(), ".dat") || now.Sub(info.ModTime()) > maxAge {
+		if strings.Contains(entry.Name(), ".tmp") || strings.HasSuffix(entry.Name(), ".dat") || now.Sub(info.ModTime()) > maxAge {
 			if err := os.Remove(fullPath); err == nil {
 				prunedCount++
 				freedBytes += info.Size()
@@ -414,7 +588,6 @@ func (s *Streamer) AutoPrune(maxAge time.Duration, maxSizeBytes int64) (int, int
 // StartAutoPruner starts a background goroutine that periodically cleans up expired cache files.
 func (s *Streamer) StartAutoPruner(ctx context.Context, maxAge time.Duration, maxSizeBytes int64, interval time.Duration) {
 	go func() {
-		// Run initial prune after brief startup delay
 		time.Sleep(5 * time.Second)
 		if count, freed, err := s.AutoPrune(maxAge, maxSizeBytes); err == nil && count > 0 {
 			log.Printf("[Streamer] Cache auto-pruner freed %.2f MB (%d files)", float64(freed)/(1024*1024), count)

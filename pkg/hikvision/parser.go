@@ -211,7 +211,7 @@ func (p *Parser) parseSegmentsFromSQLite(dd DataDirInfo) ([]models.RecordingSegm
 			continue
 		}
 
-		if endTimeSec <= startTimeSec {
+		if startTimeSec < 1420070400 || endTimeSec <= startTimeSec || startOffset >= endOffset || recordType == 0 {
 			continue
 		}
 
@@ -289,6 +289,12 @@ func (p *Parser) parseSegmentsFromBinary(dd DataDirInfo) ([]models.RecordingSegm
 			validCount = maxSegmentsPerFile
 		}
 
+		videoFilePath := filepath.Join(dd.Path, fmt.Sprintf("hiv%05d.mp4", fileIdx))
+		var fileModUnix int64
+		if fi, err := os.Stat(videoFilePath); err == nil {
+			fileModUnix = fi.ModTime().Unix()
+		}
+
 		for segIdx := 0; segIdx < validCount; segIdx++ {
 			n, err := io.ReadFull(f, segBuf)
 			if err != nil || n < SegmentLen {
@@ -306,18 +312,28 @@ func (p *Parser) parseSegmentsFromBinary(dd DataDirInfo) ([]models.RecordingSegm
 			startOffset := binary.LittleEndian.Uint32(segBuf[40:44])
 			endOffset := binary.LittleEndian.Uint32(segBuf[44:48])
 
-			if segType != 0 && endTime > startTime && startOffset < endOffset {
-				segments = append(segments, models.RecordingSegment{
-					CameraID:    p.cameraID,
-					DataDirNum:  dd.Index,
-					FileNum:     fileIdx,
-					StartOffset: startOffset,
-					EndOffset:   endOffset,
-					StartTime:   time.Unix(startTime, 0).UTC(),
-					EndTime:     time.Unix(endTime, 0).UTC(),
-					RecordType:  segType,
-				})
+			// Discard invalid types, corrupted timestamps (before year 2015), or invalid offset ranges
+			if segType == 0 || startTime < 1420070400 || endTime <= startTime || startOffset >= endOffset {
+				continue
 			}
+
+			// Discard stale overwritten ghost slots from previous rolling storage cycles
+			if fileModUnix > 0 {
+				if fileModUnix-endTime > 14*86400 || startTime > fileModUnix+86400 {
+					continue
+				}
+			}
+
+			segments = append(segments, models.RecordingSegment{
+				CameraID:    p.cameraID,
+				DataDirNum:  dd.Index,
+				FileNum:     fileIdx,
+				StartOffset: startOffset,
+				EndOffset:   endOffset,
+				StartTime:   time.Unix(startTime, 0).UTC(),
+				EndTime:     time.Unix(endTime, 0).UTC(),
+				RecordType:  segType,
+			})
 		}
 
 		// Skip remaining unallocated or stale slots for this file

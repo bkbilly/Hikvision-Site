@@ -77,7 +77,7 @@ func (h *VideoHandler) StreamClip(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract & remux/transcode segment
-	mp4Path, err := h.streamer.GetSegmentMP4(targetDir, datadirNum, uint32(fileNum), uint32(startOffset), uint32(endOffset), resolution)
+	mp4Path, err := h.streamer.GetSegmentMP4(r.Context(), targetDir, datadirNum, uint32(fileNum), uint32(startOffset), uint32(endOffset), resolution)
 	if err != nil {
 		writeJSONError(w, "Failed to extract video clip: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -143,7 +143,9 @@ func (h *VideoHandler) StreamThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	thumbPath, err := h.streamer.GetSegmentThumbnail(targetDir, datadirNum, uint32(fileNum), uint32(startOffset), uint32(endOffset))
+	position := q.Get("position")
+
+	thumbPath, err := h.streamer.GetSegmentThumbnail(r.Context(), targetDir, datadirNum, uint32(fileNum), uint32(startOffset), uint32(endOffset), position)
 	if err != nil {
 		writeJSONError(w, "Failed to generate thumbnail: "+err.Error(), http.StatusInternalServerError)
 		return

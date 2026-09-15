@@ -416,8 +416,10 @@ func (db *DB) GetRecordingDates(cameraIDs []int64) ([]models.RecordingDateInfo, 
 
 	if len(cameraIDs) == 0 {
 		query = `
-			SELECT strftime('%Y-%m-%d', datetime(start_time, 'unixepoch')) as rec_date, COUNT(*) as count
-			FROM cached_segments
+			SELECT strftime('%Y-%m-%d', datetime(cs.start_time, 'unixepoch')) as rec_date, COUNT(*) as count
+			FROM cached_segments cs
+			JOIN cameras c ON cs.camera_id = c.id
+			WHERE c.enabled = 1 AND cs.start_time >= 1420070400
 			GROUP BY rec_date
 			ORDER BY rec_date DESC
 		`
@@ -430,7 +432,7 @@ func (db *DB) GetRecordingDates(cameraIDs []int64) ([]models.RecordingDateInfo, 
 		query = fmt.Sprintf(`
 			SELECT strftime('%%Y-%%m-%%d', datetime(start_time, 'unixepoch')) as rec_date, COUNT(*) as count
 			FROM cached_segments
-			WHERE camera_id IN (%s)
+			WHERE camera_id IN (%s) AND start_time >= 1420070400
 			GROUP BY rec_date
 			ORDER BY rec_date DESC
 		`, strings.Join(placeholders, ","))
