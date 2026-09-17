@@ -24,7 +24,7 @@ import (
 //go:embed web/dist/*
 var embeddedWeb embed.FS
 
-const Version = "2.0.0"
+const Version = "2.1.0"
 
 func main() {
 	var (
