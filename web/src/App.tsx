@@ -21,7 +21,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<'live' | 'playback'>('live');
   const [events, setEvents] = useState<RecordingSegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<RecordingSegment | null>(null);
-  const [mediaType, setMediaType] = useState<'all' | 'video' | 'picture'>('all');
+  const [mediaType, setMediaType] = useState<'video' | 'picture'>('video');
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isBookmarksOpen, setIsBookmarksOpen] = useState<boolean>(false);
   const [isSaveBookmarkOpen, setIsSaveBookmarkOpen] = useState<boolean>(false);
@@ -120,7 +120,7 @@ export function App() {
         cameras: cameraIDs,
         start: startUnix,
         end: endUnix,
-        type: mediaType === 'all' ? undefined : mediaType,
+        type: mediaType,
       });
 
       setEvents(data || []);
@@ -343,17 +343,32 @@ export function App() {
           />
         ) : (
           <div className="space-y-4">
-            <VideoPlayer
-              selectedCamera={selectedCamera}
-              activeSegment={activeSegment?.media_type === 'picture' ? null : activeSegment}
-              onNextEvent={handleNextEvent}
-              onPrevEvent={handlePrevEvent}
-              hasNextEvent={currentEventIndex >= 0 && currentEventIndex < events.length - 1}
-              hasPrevEvent={currentEventIndex > 0}
-              onOpenShortcuts={() => setIsShortcutsOpen(true)}
-              onOpenSaveBookmark={() => setIsSaveBookmarkOpen(true)}
-              isBookmarked={isCurrentSegmentBookmarked}
-            />
+            {activeSegment && activeSegment.media_type === 'picture' ? (
+              <PhotoViewer
+                camera={selectedCamera || cameras.find((c) => c.id === activeSegment.camera_id) || null}
+                segment={activeSegment}
+                onClose={() => setActiveSegment(null)}
+                onNextEvent={handleNextEvent}
+                onPrevEvent={handlePrevEvent}
+                hasNextEvent={currentEventIndex >= 0 && currentEventIndex < events.length - 1}
+                hasPrevEvent={currentEventIndex > 0}
+                onOpenShortcuts={() => setIsShortcutsOpen(true)}
+                onOpenSaveBookmark={() => setIsSaveBookmarkOpen(true)}
+                isBookmarked={isCurrentSegmentBookmarked}
+              />
+            ) : (
+              <VideoPlayer
+                selectedCamera={selectedCamera}
+                activeSegment={activeSegment}
+                onNextEvent={handleNextEvent}
+                onPrevEvent={handlePrevEvent}
+                hasNextEvent={currentEventIndex >= 0 && currentEventIndex < events.length - 1}
+                hasPrevEvent={currentEventIndex > 0}
+                onOpenShortcuts={() => setIsShortcutsOpen(true)}
+                onOpenSaveBookmark={() => setIsSaveBookmarkOpen(true)}
+                isBookmarked={isCurrentSegmentBookmarked}
+              />
+            )}
 
             <Timeline
               cameras={enabledCameras}
@@ -368,20 +383,11 @@ export function App() {
               onChangeTimeWindow={handleChangeTimeWindow}
               isLoading={isLoadingEvents}
               mediaType={mediaType}
-              onChangeMediaType={setMediaType}
+              onChangeMediaType={(type) => {
+                setMediaType(type);
+                setActiveSegment(null);
+              }}
             />
-
-            {activeSegment && activeSegment.media_type === 'picture' && (
-              <PhotoViewer
-                camera={selectedCamera || cameras.find((c) => c.id === activeSegment.camera_id) || null}
-                segment={activeSegment}
-                onClose={() => setActiveSegment(null)}
-                onNext={handleNextEvent}
-                onPrev={handlePrevEvent}
-                hasNext={currentEventIndex >= 0 && currentEventIndex < events.length - 1}
-                hasPrev={currentEventIndex > 0}
-              />
-            )}
           </div>
         )}
       </main>

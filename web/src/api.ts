@@ -136,7 +136,7 @@ export const api = {
   },
 
   // Events
-  getEvents: (params?: { cameras?: number[]; start?: number; end?: number; type?: 'video' | 'picture' | 'all' }) => {
+  getEvents: (params?: { cameras?: number[]; start?: number; end?: number; type?: 'video' | 'picture' }) => {
     const query = new URLSearchParams();
     if (params?.cameras && params.cameras.length > 0) {
       query.set('cameras', params.cameras.join(','));
@@ -147,18 +147,18 @@ export const api = {
     if (params?.end) {
       query.set('end', params.end.toString());
     }
-    if (params?.type && params.type !== 'all') {
+    if (params?.type) {
       query.set('type', params.type);
     }
     return request<RecordingSegment[]>(`/events?${query.toString()}`);
   },
 
-  getRecordingDates: (cameras?: number[], type?: 'video' | 'picture' | 'all') => {
+  getRecordingDates: (cameras?: number[], type?: 'video' | 'picture') => {
     const query = new URLSearchParams();
     if (cameras && cameras.length > 0) {
       query.set('cameras', cameras.join(','));
     }
-    if (type && type !== 'all') {
+    if (type) {
       query.set('type', type);
     }
     return request<RecordingDateInfo[]>(`/events/dates?${query.toString()}`);
