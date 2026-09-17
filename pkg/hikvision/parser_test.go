@@ -194,3 +194,92 @@ func TestHikvisionStaleSegmentsIgnored(t *testing.T) {
 		t.Fatalf("Unexpected segment: %+v", segments[0])
 	}
 }
+
+func TestHikvisionPictureParsing(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "hik_test_pic_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	infoPath := filepath.Join(tempDir, "info.bin")
+	infoData := make([]byte, NasInfoLen)
+	binary.LittleEndian.PutUint32(infoData[64:68], 1) // DataDirs = 1
+	if err := os.WriteFile(infoPath, infoData, 0644); err != nil {
+		t.Fatalf("Failed to write info.bin: %v", err)
+	}
+
+	datadir0 := filepath.Join(tempDir, "datadir0")
+	if err := os.MkdirAll(datadir0, 0755); err != nil {
+		t.Fatalf("Failed to create datadir0: %v", err)
+	}
+
+	// Create a dummy hiv00000.pic with a valid JPEG inside (SOI 0xFF,0xD8 ... EOI 0xFF,0xD9)
+	dummyPic := make([]byte, 1000)
+	dummyPic[50] = 0xFF
+	dummyPic[51] = 0xD8 // SOI
+	copy(dummyPic[52:56], []byte("JPEG"))
+	dummyPic[200] = 0xFF
+	dummyPic[201] = 0xD9 // EOI
+	if err := os.WriteFile(filepath.Join(datadir0, "hiv00000.pic"), dummyPic, 0644); err != nil {
+		t.Fatalf("Failed to write hiv00000.pic: %v", err)
+	}
+
+	// Create mock index00p.bin (Binary Picture Index with 4096 slots per file)
+	avFiles := uint32(1)
+	header := make([]byte, HeaderLen)
+	binary.LittleEndian.PutUint32(header[12:16], avFiles)
+
+	fileRecords := make([]byte, FileLen*int(avFiles))
+	binary.LittleEndian.PutUint32(fileRecords[0:4], 0)
+	binary.LittleEndian.PutUint16(fileRecords[4:6], 1)
+	binary.LittleEndian.PutUint16(fileRecords[6:8], 1) // 1 picture segment
+
+	segmentRecords := make([]byte, 4096*SegmentLen)
+	seg0 := segmentRecords[0:SegmentLen]
+	seg0[0] = 1 // Motion Picture
+	nowUnix := uint64(time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC).Unix())
+	binary.LittleEndian.PutUint64(seg0[8:16], nowUnix)
+	binary.LittleEndian.PutUint64(seg0[16:24], nowUnix)
+	binary.LittleEndian.PutUint32(seg0[40:44], 0)   // startOffset
+	binary.LittleEndian.PutUint32(seg0[44:48], 250) // endOffset
+
+	var fullPicIndex []byte
+	fullPicIndex = append(fullPicIndex, header...)
+	fullPicIndex = append(fullPicIndex, fileRecords...)
+	fullPicIndex = append(fullPicIndex, segmentRecords...)
+
+	if err := os.WriteFile(filepath.Join(datadir0, "index00p.bin"), fullPicIndex, 0644); err != nil {
+		t.Fatalf("Failed to write index00p.bin: %v", err)
+	}
+
+	parser, err := NewParser(1, infoPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize parser: %v", err)
+	}
+
+	segments, err := parser.ParseAllSegments()
+	if err != nil {
+		t.Fatalf("Failed to parse segments: %v", err)
+	}
+
+	if len(segments) != 1 {
+		t.Fatalf("Expected 1 picture segment, got %d: %+v", len(segments), segments)
+	}
+
+	if segments[0].MediaType != "picture" {
+		t.Fatalf("Expected MediaType 'picture', got '%s'", segments[0].MediaType)
+	}
+
+	// Test ExtractPicture
+	jpegBytes, err := parser.ExtractPicture(0, 0, 0, 250)
+	if err != nil {
+		t.Fatalf("Failed to extract picture: %v", err)
+	}
+	if len(jpegBytes) != (201 - 50 + 1) { // from 50 to 201 inclusive
+		t.Fatalf("Unexpected extracted JPEG length: %d", len(jpegBytes))
+	}
+	if jpegBytes[0] != 0xFF || jpegBytes[1] != 0xD8 || jpegBytes[len(jpegBytes)-2] != 0xFF || jpegBytes[len(jpegBytes)-1] != 0xD9 {
+		t.Fatalf("Extracted JPEG missing SOI/EOI markers: %v", jpegBytes[:4])
+	}
+}

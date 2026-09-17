@@ -59,6 +59,7 @@ type RecordingSegment struct {
 	StartTime   time.Time `json:"start"`
 	EndTime     time.Time `json:"end"`
 	RecordType  uint8     `json:"record_type"`
+	MediaType   string    `json:"media_type,omitempty"` // "video" (default) or "picture"
 }
 
 // User represents an administrator user.

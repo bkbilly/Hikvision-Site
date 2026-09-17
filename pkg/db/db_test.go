@@ -123,8 +123,8 @@ func TestDatabaseOperations(t *testing.T) {
 		t.Fatalf("Expected 2 segments, got %d (err: %v)", segCount, err)
 	}
 
-	// Query segments in time window
-	queried, err := database.QuerySegments([]int64{cam.ID}, now.Add(-3*time.Hour), now)
+	// Query segments in time window (all media types)
+	queried, err := database.QuerySegments([]int64{cam.ID}, now.Add(-3*time.Hour), now, "")
 	if err != nil || len(queried) != 2 {
 		t.Fatalf("Expected 2 queried segments, got %d (err: %v)", len(queried), err)
 	}
@@ -140,6 +140,18 @@ func TestDatabaseOperations(t *testing.T) {
 			StartTime:   now.Add(-5 * time.Minute),
 			EndTime:     now,
 			RecordType:  1,
+			MediaType:   "video",
+		},
+		{
+			CameraID:    cam.ID,
+			DataDirNum:  0,
+			FileNum:     3,
+			StartOffset: 100,
+			EndOffset:   5000,
+			StartTime:   now.Add(-2 * time.Minute),
+			EndTime:     now.Add(-2 * time.Minute),
+			RecordType:  1,
+			MediaType:   "picture",
 		},
 	}
 	if err := database.ReplaceCameraSegments(cam.ID, replacementSegs); err != nil {
@@ -147,8 +159,14 @@ func TestDatabaseOperations(t *testing.T) {
 	}
 
 	segCount, err = database.CountSegments()
-	if err != nil || segCount != 1 {
-		t.Fatalf("Expected 1 segment after replace, got %d (err: %v)", segCount, err)
+	if err != nil || segCount != 2 {
+		t.Fatalf("Expected 2 segments after replace, got %d (err: %v)", segCount, err)
+	}
+
+	// Filter by picture
+	pics, err := database.QuerySegments([]int64{cam.ID}, now.Add(-10*time.Minute), now, "picture")
+	if err != nil || len(pics) != 1 {
+		t.Fatalf("Expected 1 picture segment, got %d (err: %v)", len(pics), err)
 	}
 
 	// 4. Settings tests
@@ -160,7 +178,7 @@ func TestDatabaseOperations(t *testing.T) {
 	}
 
 	// 5. Recording Dates (Heatmap) tests
-	recDates, err := database.GetRecordingDates([]int64{cam.ID})
+	recDates, err := database.GetRecordingDates([]int64{cam.ID}, "all")
 	if err != nil || len(recDates) == 0 {
 		t.Fatalf("Expected recording dates, got %v (err: %v)", recDates, err)
 	}

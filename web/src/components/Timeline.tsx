@@ -27,6 +27,8 @@ interface TimelineProps {
   endTime: Date;
   onChangeTimeWindow: (start: Date, end: Date) => void;
   isLoading: boolean;
+  mediaType: 'all' | 'video' | 'picture';
+  onChangeMediaType: (type: 'all' | 'video' | 'picture') => void;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -41,6 +43,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   endTime,
   onChangeTimeWindow,
   isLoading,
+  mediaType,
+  onChangeMediaType,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const minimapRef = useRef<HTMLDivElement | null>(null);
@@ -64,7 +68,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const loadRecordingDates = useCallback(async () => {
     try {
       const cameraIDs = selectedCamera ? [selectedCamera.id] : undefined;
-      const data = await api.getRecordingDates(cameraIDs);
+      const data = await api.getRecordingDates(cameraIDs, mediaType);
       const map: Record<string, number> = {};
       (data || []).forEach((item) => {
         map[item.date] = item.count;
@@ -73,7 +77,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     } catch (err) {
       console.error('Failed to load recording dates', err);
     }
-  }, [selectedCamera]);
+  }, [selectedCamera, mediaType]);
 
   useEffect(() => {
     loadRecordingDates();
@@ -513,6 +517,40 @@ export const Timeline: React.FC<TimelineProps> = ({
               Full Day
             </button>
           </div>
+
+          {/* Media Type Filter: All / Videos / Photos */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5 text-xs font-medium">
+            <button
+              onClick={() => onChangeMediaType('all')}
+              className={`px-2.5 py-1 rounded-lg transition-colors ${
+                mediaType === 'all'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => onChangeMediaType('video')}
+              className={`px-2.5 py-1 rounded-lg transition-colors ${
+                mediaType === 'video'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              🎬 Videos
+            </button>
+            <button
+              onClick={() => onChangeMediaType('picture')}
+              className={`px-2.5 py-1 rounded-lg transition-colors ${
+                mediaType === 'picture'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              📷 Photos
+            </button>
+          </div>
         </div>
 
         {/* Center: Current View Window (24h format) & Event Type Legend */}
@@ -708,11 +746,12 @@ export const Timeline: React.FC<TimelineProps> = ({
                       activeSegment?.videoStart === seg.videoStart
                     );
 
+                    const isPhoto = seg.media_type === 'picture';
                     const typeInfo = getEventTypeInfo(seg.record_type);
 
                     return (
                       <button
-                        key={`${seg.camera_id}-${seg.datadir}-${seg.file}-${seg.videoStart}`}
+                        key={`${seg.camera_id}-${seg.datadir}-${seg.file}-${seg.videoStart}-${seg.media_type || 'v'}`}
                         onClick={(e) => {
                           if (hasDraggedRef.current) {
                             e.stopPropagation();
@@ -722,18 +761,22 @@ export const Timeline: React.FC<TimelineProps> = ({
                           e.stopPropagation();
                           onSelectSegment(seg);
                         }}
-                        title={`${cam.name} (${typeInfo.label}): ${seg.start} to ${seg.end}`}
+                        title={`${isPhoto ? '📷 Photo' : '🎬 Video'} - ${cam.name} (${typeInfo.label}): ${seg.start}`}
                         className={`absolute top-1.5 bottom-1.5 rounded-md transition-all z-10 ${
                           isDragging ? 'pointer-events-none' : ''
                         } ${
                           isActive
-                            ? typeInfo.activeColorClass
+                            ? isPhoto
+                              ? 'bg-amber-400 ring-2 ring-white shadow-lg z-20 scale-y-125'
+                              : typeInfo.activeColorClass
+                            : isPhoto
+                            ? 'bg-amber-500/90 border border-amber-300 ring-1 ring-amber-400/40 hover:scale-y-125'
                             : `${typeInfo.colorClass} hover:scale-y-110`
                         }`}
                         style={{
                           left: `${leftPct}%`,
                           width: `${widthPct}%`,
-                          minWidth: '5px',
+                          minWidth: isPhoto ? '6px' : '5px',
                         }}
                       />
                     );

@@ -11,6 +11,7 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 import { BookmarksModal } from './components/BookmarksModal';
 import { SaveBookmarkModal } from './components/SaveBookmarkModal';
 import { LoginModal } from './components/LoginModal';
+import { PhotoViewer } from './components/PhotoViewer';
 
 export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!getAuthToken());
@@ -20,6 +21,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<'live' | 'playback'>('live');
   const [events, setEvents] = useState<RecordingSegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<RecordingSegment | null>(null);
+  const [mediaType, setMediaType] = useState<'all' | 'video' | 'picture'>('all');
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isBookmarksOpen, setIsBookmarksOpen] = useState<boolean>(false);
   const [isSaveBookmarkOpen, setIsSaveBookmarkOpen] = useState<boolean>(false);
@@ -118,6 +120,7 @@ export function App() {
         cameras: cameraIDs,
         start: startUnix,
         end: endUnix,
+        type: mediaType === 'all' ? undefined : mediaType,
       });
 
       setEvents(data || []);
@@ -126,13 +129,13 @@ export function App() {
     } finally {
       setIsLoadingEvents(false);
     }
-  }, [isAuthenticated, cameras, selectedCamera]);
+  }, [isAuthenticated, cameras, selectedCamera, mediaType]);
 
   useEffect(() => {
     if (activeTab === 'playback') {
       loadEventsForDate(selectedDate);
     }
-  }, [activeTab, selectedDate, selectedCamera, loadEventsForDate]);
+  }, [activeTab, selectedDate, selectedCamera, mediaType, loadEventsForDate]);
 
   // Automatically track date as timeline is panned left or right
   const handleChangeTimeWindow = useCallback((start: Date, end: Date) => {
@@ -342,7 +345,7 @@ export function App() {
           <div className="space-y-4">
             <VideoPlayer
               selectedCamera={selectedCamera}
-              activeSegment={activeSegment}
+              activeSegment={activeSegment?.media_type === 'picture' ? null : activeSegment}
               onNextEvent={handleNextEvent}
               onPrevEvent={handlePrevEvent}
               hasNextEvent={currentEventIndex >= 0 && currentEventIndex < events.length - 1}
@@ -364,7 +367,21 @@ export function App() {
               endTime={timeWindow.end}
               onChangeTimeWindow={handleChangeTimeWindow}
               isLoading={isLoadingEvents}
+              mediaType={mediaType}
+              onChangeMediaType={setMediaType}
             />
+
+            {activeSegment && activeSegment.media_type === 'picture' && (
+              <PhotoViewer
+                camera={selectedCamera || cameras.find((c) => c.id === activeSegment.camera_id) || null}
+                segment={activeSegment}
+                onClose={() => setActiveSegment(null)}
+                onNext={handleNextEvent}
+                onPrev={handlePrevEvent}
+                hasNext={currentEventIndex >= 0 && currentEventIndex < events.length - 1}
+                hasPrev={currentEventIndex > 0}
+              />
+            )}
           </div>
         )}
       </main>

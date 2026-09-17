@@ -75,14 +75,15 @@ func (db *DB) migrate() error {
 		start_time INTEGER NOT NULL,
 		end_time INTEGER NOT NULL,
 		record_type INTEGER NOT NULL,
+		media_type TEXT NOT NULL DEFAULT 'video',
 		FOREIGN KEY(camera_id) REFERENCES cameras(id) ON DELETE CASCADE
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_segments_cam_time 
-	ON cached_segments(camera_id, start_time, end_time);
+	ON cached_segments(camera_id, media_type, start_time, end_time);
 
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_unique 
-	ON cached_segments(camera_id, datadir_num, file_num, start_offset, end_offset);
+	ON cached_segments(camera_id, datadir_num, file_num, start_offset, end_offset, media_type);
 
 	CREATE TABLE IF NOT EXISTS bookmarks (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,9 +102,15 @@ func (db *DB) migrate() error {
 		FOREIGN KEY(camera_id) REFERENCES cameras(id) ON DELETE CASCADE
 	);
 	`
+	if _, err := db.conn.Exec(schema); err != nil {
+		return err
+	}
 
-	_, err := db.conn.Exec(schema)
-	return err
+	// Upgrade existing database schemas if column is missing
+	_, _ = db.conn.Exec("ALTER TABLE cached_segments ADD COLUMN media_type TEXT NOT NULL DEFAULT 'video'")
+	_, _ = db.conn.Exec("CREATE INDEX IF NOT EXISTS idx_segments_cam_time ON cached_segments(camera_id, media_type, start_time, end_time)")
+
+	return nil
 }
 
 // User methods
@@ -268,15 +275,19 @@ func insertSegmentsChunk(tx *sql.Tx, cameraID int64, chunk []models.RecordingSeg
 	}
 
 	query := strings.Builder{}
-	query.WriteString("INSERT OR IGNORE INTO cached_segments (camera_id, datadir_num, file_num, start_offset, end_offset, start_time, end_time, record_type) VALUES ")
+	query.WriteString("INSERT OR IGNORE INTO cached_segments (camera_id, datadir_num, file_num, start_offset, end_offset, start_time, end_time, record_type, media_type) VALUES ")
 
-	args := make([]interface{}, 0, len(chunk)*8)
+	args := make([]interface{}, 0, len(chunk)*9)
 	for i, seg := range chunk {
 		if i > 0 {
 			query.WriteString(",")
 		}
-		query.WriteString("(?, ?, ?, ?, ?, ?, ?, ?)")
-		args = append(args, cameraID, seg.DataDirNum, seg.FileNum, seg.StartOffset, seg.EndOffset, seg.StartTime.Unix(), seg.EndTime.Unix(), seg.RecordType)
+		query.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		mediaType := seg.MediaType
+		if mediaType == "" {
+			mediaType = "video"
+		}
+		args = append(args, cameraID, seg.DataDirNum, seg.FileNum, seg.StartOffset, seg.EndOffset, seg.StartTime.Unix(), seg.EndTime.Unix(), seg.RecordType, mediaType)
 	}
 
 	_, err := tx.Exec(query.String(), args...)
@@ -334,25 +345,27 @@ func (db *DB) ReplaceCameraSegments(cameraID int64, segments []models.RecordingS
 	return tx.Commit()
 }
 
-func (db *DB) QuerySegments(cameraIDs []int64, start, end time.Time) ([]models.RecordingSegment, error) {
+func (db *DB) QuerySegments(cameraIDs []int64, start, end time.Time, mediaType string) ([]models.RecordingSegment, error) {
 	if len(cameraIDs) == 0 {
 		return nil, nil
 	}
 
 	placeholders := make([]string, len(cameraIDs))
-	args := make([]interface{}, 0, len(cameraIDs)+2)
+	args := make([]interface{}, 0, len(cameraIDs)+3)
 	for i, id := range cameraIDs {
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
 	args = append(args, start.Unix(), end.Unix())
 
-	query := fmt.Sprintf(`
-		SELECT id, camera_id, datadir_num, file_num, start_offset, end_offset, start_time, end_time, record_type
-		FROM cached_segments
-		WHERE camera_id IN (%s) AND end_time >= ? AND start_time <= ?
-		ORDER BY start_time ASC
-	`, strings.Join(placeholders, ","))
+	mediaFilter := ""
+	if mediaType != "" && mediaType != "all" {
+		mediaFilter = " AND media_type = ?"
+		args = append(args, mediaType)
+	}
+
+	query := "SELECT id, camera_id, datadir_num, file_num, start_offset, end_offset, start_time, end_time, record_type, media_type FROM cached_segments WHERE camera_id IN (" +
+		strings.Join(placeholders, ",") + ") AND end_time >= ? AND start_time <= ?" + mediaFilter + " ORDER BY start_time ASC"
 
 	rows, err := db.conn.Query(query, args...)
 	if err != nil {
@@ -374,6 +387,7 @@ func (db *DB) QuerySegments(cameraIDs []int64, start, end time.Time) ([]models.R
 			&startUnix,
 			&endUnix,
 			&seg.RecordType,
+			&seg.MediaType,
 		); err != nil {
 			return nil, err
 		}
@@ -410,32 +424,35 @@ func (db *DB) SetSetting(key, val string) error {
 	return err
 }
 
-func (db *DB) GetRecordingDates(cameraIDs []int64) ([]models.RecordingDateInfo, error) {
+func (db *DB) GetRecordingDates(cameraIDs []int64, mediaType string) ([]models.RecordingDateInfo, error) {
 	var query string
 	var args []interface{}
 
+	mediaFilter := ""
+	if mediaType != "" && mediaType != "all" {
+		mediaFilter = " AND cs.media_type = ?"
+		if len(cameraIDs) > 0 {
+			mediaFilter = " AND media_type = ?"
+		}
+	}
+
 	if len(cameraIDs) == 0 {
-		query = `
-			SELECT strftime('%Y-%m-%d', datetime(cs.start_time, 'unixepoch')) as rec_date, COUNT(*) as count
-			FROM cached_segments cs
-			JOIN cameras c ON cs.camera_id = c.id
-			WHERE c.enabled = 1 AND cs.start_time >= 1420070400
-			GROUP BY rec_date
-			ORDER BY rec_date DESC
-		`
+		query = "SELECT strftime('%Y-%m-%d', datetime(cs.start_time, 'unixepoch')) as rec_date, COUNT(*) as count FROM cached_segments cs JOIN cameras c ON cs.camera_id = c.id WHERE c.enabled = 1 AND cs.start_time >= 1420070400" +
+			mediaFilter + " GROUP BY rec_date ORDER BY rec_date DESC"
+		if mediaFilter != "" {
+			args = append(args, mediaType)
+		}
 	} else {
 		placeholders := make([]string, len(cameraIDs))
 		for i, id := range cameraIDs {
 			placeholders[i] = "?"
 			args = append(args, id)
 		}
-		query = fmt.Sprintf(`
-			SELECT strftime('%%Y-%%m-%%d', datetime(start_time, 'unixepoch')) as rec_date, COUNT(*) as count
-			FROM cached_segments
-			WHERE camera_id IN (%s) AND start_time >= 1420070400
-			GROUP BY rec_date
-			ORDER BY rec_date DESC
-		`, strings.Join(placeholders, ","))
+		if mediaFilter != "" {
+			args = append(args, mediaType)
+		}
+		query = "SELECT strftime('%Y-%m-%d', datetime(start_time, 'unixepoch')) as rec_date, COUNT(*) as count FROM cached_segments WHERE camera_id IN (" +
+			strings.Join(placeholders, ",") + ") AND start_time >= 1420070400" + mediaFilter + " GROUP BY rec_date ORDER BY rec_date DESC"
 	}
 
 	rows, err := db.conn.Query(query, args...)

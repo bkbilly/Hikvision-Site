@@ -31,10 +31,12 @@ type EventResponseItem struct {
 	VideoStart uint32 `json:"videoStart"`
 	VideoEnd   uint32 `json:"videoEnd"`
 	RecordType uint8  `json:"record_type"`
+	MediaType  string `json:"media_type"`
 }
 
 func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	mediaType := q.Get("type")
 
 	// Parse camera IDs
 	var cameraIDs []int64
@@ -91,7 +93,7 @@ func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		endTime = time.Now().UTC().Add(1 * time.Hour)
 	}
 
-	segments, err := h.db.QuerySegments(cameraIDs, startTime, endTime)
+	segments, err := h.db.QuerySegments(cameraIDs, startTime, endTime, mediaType)
 	if err != nil {
 		writeJSONError(w, "Failed to query events: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -104,11 +106,15 @@ func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 				_, _ = h.crawler.SyncCamera(*cam)
 			}
 		}
-		segments, _ = h.db.QuerySegments(cameraIDs, startTime, endTime)
+		segments, _ = h.db.QuerySegments(cameraIDs, startTime, endTime, mediaType)
 	}
 
 	response := make([]EventResponseItem, len(segments))
 	for i, seg := range segments {
+		mType := seg.MediaType
+		if mType == "" {
+			mType = "video"
+		}
 		response[i] = EventResponseItem{
 			ID:         seg.ID,
 			CameraID:   seg.CameraID,
@@ -120,6 +126,7 @@ func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 			VideoStart: seg.StartOffset,
 			VideoEnd:   seg.EndOffset,
 			RecordType: seg.RecordType,
+			MediaType:  mType,
 		}
 	}
 
@@ -128,6 +135,7 @@ func (h *EventHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 
 func (h *EventHandler) GetRecordingDates(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	mediaType := q.Get("type")
 	var cameraIDs []int64
 	camParam := q.Get("cameras")
 	if camParam != "" {
@@ -139,7 +147,7 @@ func (h *EventHandler) GetRecordingDates(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	dates, err := h.db.GetRecordingDates(cameraIDs)
+	dates, err := h.db.GetRecordingDates(cameraIDs, mediaType)
 	if err != nil {
 		writeJSONError(w, "Failed to get recording dates: "+err.Error(), http.StatusInternalServerError)
 		return

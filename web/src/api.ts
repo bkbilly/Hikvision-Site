@@ -130,8 +130,13 @@ export const api = {
     return `${API_BASE}/cameras/${cameraId}/video?datadir=${datadir}&file=${file}&start=${start}&end=${end}&resolution=${res}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
   },
 
+  getPictureUrl: (cameraId: number, datadir: number, file: number, start: number, end: number) => {
+    const token = getAuthToken();
+    return `${API_BASE}/cameras/${cameraId}/picture?datadir=${datadir}&file=${file}&start=${start}&end=${end}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+  },
+
   // Events
-  getEvents: (params?: { cameras?: number[]; start?: number; end?: number }) => {
+  getEvents: (params?: { cameras?: number[]; start?: number; end?: number; type?: 'video' | 'picture' | 'all' }) => {
     const query = new URLSearchParams();
     if (params?.cameras && params.cameras.length > 0) {
       query.set('cameras', params.cameras.join(','));
@@ -142,13 +147,19 @@ export const api = {
     if (params?.end) {
       query.set('end', params.end.toString());
     }
+    if (params?.type && params.type !== 'all') {
+      query.set('type', params.type);
+    }
     return request<RecordingSegment[]>(`/events?${query.toString()}`);
   },
 
-  getRecordingDates: (cameras?: number[]) => {
+  getRecordingDates: (cameras?: number[], type?: 'video' | 'picture' | 'all') => {
     const query = new URLSearchParams();
     if (cameras && cameras.length > 0) {
       query.set('cameras', cameras.join(','));
+    }
+    if (type && type !== 'all') {
+      query.set('type', type);
     }
     return request<RecordingDateInfo[]>(`/events/dates?${query.toString()}`);
   },

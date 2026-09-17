@@ -154,3 +154,61 @@ func (h *VideoHandler) StreamThumbnail(w http.ResponseWriter, r *http.Request) {
 	h.streamer.ServeThumbnail(w, r, thumbPath)
 }
 
+func (h *VideoHandler) StreamPicture(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	cameraID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeJSONError(w, "Invalid camera ID", http.StatusBadRequest)
+		return
+	}
+
+	cam, err := h.db.GetCamera(cameraID)
+	if err != nil {
+		writeJSONError(w, "Camera not found", http.StatusNotFound)
+		return
+	}
+
+	q := r.URL.Query()
+	datadirNum, err := strconv.Atoi(q.Get("datadir"))
+	if err != nil {
+		writeJSONError(w, "Invalid datadir parameter", http.StatusBadRequest)
+		return
+	}
+
+	fileNum, err := strconv.ParseUint(q.Get("file"), 10, 32)
+	if err != nil {
+		writeJSONError(w, "Invalid file parameter", http.StatusBadRequest)
+		return
+	}
+
+	startOffset, err := strconv.ParseUint(q.Get("start"), 10, 32)
+	if err != nil {
+		writeJSONError(w, "Invalid start offset parameter", http.StatusBadRequest)
+		return
+	}
+
+	endOffset, err := strconv.ParseUint(q.Get("end"), 10, 32)
+	if err != nil {
+		writeJSONError(w, "Invalid end offset parameter", http.StatusBadRequest)
+		return
+	}
+
+	parser, err := hikvision.NewParser(cameraID, cam.Path)
+	if err != nil {
+		writeJSONError(w, "Failed to resolve camera storage path: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	jpegData, err := parser.ExtractPicture(datadirNum, uint32(fileNum), uint32(startOffset), uint32(endOffset))
+	if err != nil {
+		writeJSONError(w, "Failed to extract picture: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Content-Length", strconv.Itoa(len(jpegData)))
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(jpegData)
+}
+

@@ -23,6 +23,7 @@ export interface RecordingSegment {
   videoStart: number;
   videoEnd: number;
   record_type: number;
+  media_type?: 'video' | 'picture';
 }
 
 export interface SystemStatus {
