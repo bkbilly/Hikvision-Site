@@ -283,3 +283,106 @@ func TestHikvisionPictureParsing(t *testing.T) {
 		t.Fatalf("Extracted JPEG missing SOI/EOI markers: %v", jpegBytes[:4])
 	}
 }
+
+func TestHikvisionHIKBTREEParser(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "hik_btree_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a synthetic HIKBTREE index file
+	// Page 0: Root/Header page with HIKBTREE magic at offset 16
+	page0 := make([]byte, 4096)
+	binary.LittleEndian.PutUint32(page0[0:4], 1) // Root page type = 1
+	copy(page0[16:24], []byte("HIKBTREE"))
+	copy(page0[32:48], []byte("HIK.2010.11.09"))
+	binary.LittleEndian.PutUint32(page0[52:56], 4096) // pageSize
+	binary.LittleEndian.PutUint32(page0[56:60], 2)    // treeDepth
+	binary.LittleEndian.PutUint32(page0[104:108], 2)  // totalItems
+
+	// Page 1: Leaf page with 2 recording items
+	page1 := make([]byte, 4096)
+	binary.LittleEndian.PutUint32(page1[0:4], 2)   // Leaf page type = 2
+	binary.LittleEndian.PutUint32(page1[16:20], 2) // recCount = 2
+
+	// Record 0 at offset 96
+	rec0 := page1[96 : 96+48]
+	rec0[17] = 8 // Channel 8
+	rec0[19] = 1 // Record type 1
+	binary.LittleEndian.PutUint32(rec0[24:28], 1784211246) // t1: 2026-07-16 17:14:06 UTC
+	binary.LittleEndian.PutUint32(rec0[28:32], 1784219576) // t2: 2026-07-16 19:32:56 UTC
+	binary.LittleEndian.PutUint64(rec0[32:40], 44103491584) // diskOffset
+
+	// Record 1 at offset 144
+	rec1 := page1[144 : 144+48]
+	rec1[17] = 8 // Channel 8
+	rec1[19] = 1 // Record type 1
+	binary.LittleEndian.PutUint32(rec1[24:28], 1784221720) // t1
+	binary.LittleEndian.PutUint32(rec1[28:32], 1784225857) // t2
+	binary.LittleEndian.PutUint64(rec1[32:40], 45177233408) // diskOffset
+
+	var btreeData []byte
+	btreeData = append(btreeData, page0...)
+	btreeData = append(btreeData, page1...)
+
+	indexPath := filepath.Join(tempDir, "INDEX00.bin")
+	if err := os.WriteFile(indexPath, btreeData, 0644); err != nil {
+		t.Fatalf("Failed to write INDEX00.bin: %v", err)
+	}
+
+	// Create dummy hiv00000.mp4 and hiv00001.mp4 files
+	_ = os.WriteFile(filepath.Join(tempDir, "hiv00000.mp4"), []byte("video0"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "hiv00001.mp4"), []byte("video1"), 0644)
+
+	parser, err := NewParser(1, tempDir)
+	if err != nil {
+		t.Fatalf("Failed to initialize HIKBTREE parser: %v", err)
+	}
+
+	dataDirs := parser.GetDataDirs()
+	if len(dataDirs) != 1 {
+		t.Fatalf("Expected 1 datadir, got %d", len(dataDirs))
+	}
+	if !dataDirs[0].IsHIKBTREE {
+		t.Fatalf("Expected IsHIKBTREE to be true")
+	}
+
+	segments, err := parser.ParseAllSegments()
+	if err != nil {
+		t.Fatalf("Failed to parse HIKBTREE segments: %v", err)
+	}
+
+	if len(segments) != 2 {
+		t.Fatalf("Expected 2 segments, got %d", len(segments))
+	}
+
+	if segments[0].StartTime.Unix() != 1784211246 || segments[0].EndTime.Unix() != 1784219576 {
+		t.Fatalf("Segment 0 timestamp mismatch: got start=%d end=%d", segments[0].StartTime.Unix(), segments[0].EndTime.Unix())
+	}
+	if segments[1].StartTime.Unix() != 1784221720 || segments[1].EndTime.Unix() != 1784225857 {
+		t.Fatalf("Segment 1 timestamp mismatch: got start=%d end=%d", segments[1].StartTime.Unix(), segments[1].EndTime.Unix())
+	}
+}
+
+func TestRealHIKBTREEData(t *testing.T) {
+	path := "/home/bkbilly/Downloads/cameratest/INDEX00.bin"
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("Real test file not found")
+	}
+
+	p, err := NewParser(1, path)
+	if err != nil {
+		t.Fatalf("Failed to init parser: %v", err)
+	}
+
+	segs, err := p.ParseAllSegments()
+	if err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+
+	if len(segs) != 499 {
+		t.Fatalf("Expected 499 segments, got %d", len(segs))
+	}
+}
+

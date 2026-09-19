@@ -1,6 +1,7 @@
 package hikvision
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/binary"
 	"fmt"
@@ -24,10 +25,13 @@ const (
 type DataDirInfo struct {
 	Index          int
 	Path           string
-	IndexFile      string // Video index (index00.bin or record_db_index00)
+	IndexFile      string // Video index (index00.bin, INDEX00.bin, or record_db_index00)
+	IndexType      string // "bin", "sqlite", "hikbtree"
 	IsSQLiteIdx    bool
+	IsHIKBTREE     bool
 	PicIndexFile   string // Picture index (index00p.bin or event_db_index00)
 	IsSQLitePicIdx bool
+	IsPicHIKBTREE  bool
 }
 
 type Parser struct {
@@ -49,6 +53,43 @@ func NewParser(cameraID int64, storagePath string) (*Parser, error) {
 	return p, nil
 }
 
+func findFileCI(dir, filename string) string {
+	target := strings.ToLower(filename)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if strings.ToLower(e.Name()) == target {
+			return filepath.Join(dir, e.Name())
+		}
+	}
+	return ""
+}
+
+func detectIndexType(filePath string) (string, bool, bool) {
+	if filePath == "" {
+		return "none", false, false
+	}
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "none", false, false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 64)
+	n, _ := f.Read(buf)
+	buf = buf[:n]
+
+	if bytes.Contains(buf, []byte("HIKBTREE")) {
+		return "hikbtree", true, false
+	}
+	if bytes.HasPrefix(buf, []byte("SQLite format 3")) || strings.Contains(strings.ToLower(filePath), "record_db_index00") || strings.Contains(strings.ToLower(filePath), "event_db_index00") {
+		return "sqlite", false, true
+	}
+	return "bin", false, false
+}
+
 func (p *Parser) discoverDataDirs() error {
 	path := p.rootPath
 	fi, err := os.Stat(path)
@@ -58,19 +99,36 @@ func (p *Parser) discoverDataDirs() error {
 
 	var candidatePaths []string
 
-	if !fi.IsDir() && strings.HasSuffix(strings.ToLower(path), "info.bin") {
-		// Single info.bin file specified
-		dirs, err := p.parseNASInfo(path)
-		if err != nil {
-			return fmt.Errorf("failed to parse %s: %w", path, err)
+	if !fi.IsDir() {
+		lowerPath := strings.ToLower(path)
+		if strings.HasSuffix(lowerPath, "info.bin") {
+			// Single info.bin file specified
+			dirs, err := p.parseNASInfo(path)
+			if err != nil {
+				return fmt.Errorf("failed to parse %s: %w", path, err)
+			}
+			baseDir := filepath.Dir(path)
+			for i := 0; i < dirs; i++ {
+				candidatePaths = append(candidatePaths, filepath.Join(baseDir, fmt.Sprintf("datadir%d", i)))
+			}
+		} else {
+			// Direct file specified (e.g. INDEX00.bin, index00.bin, record_db_index00)
+			p.dataDirs = []DataDirInfo{
+				{
+					Index:     0,
+					Path:      filepath.Dir(path),
+					IndexFile: path,
+				},
+			}
+			idxType, isHIK, isSQL := detectIndexType(path)
+			p.dataDirs[0].IndexType = idxType
+			p.dataDirs[0].IsHIKBTREE = isHIK
+			p.dataDirs[0].IsSQLiteIdx = isSQL
+			return nil
 		}
-		baseDir := filepath.Dir(path)
-		for i := 0; i < dirs; i++ {
-			candidatePaths = append(candidatePaths, filepath.Join(baseDir, fmt.Sprintf("datadir%d", i)))
-		}
-	} else if fi.IsDir() {
-		infoPath := filepath.Join(path, "info.bin")
-		if _, err := os.Stat(infoPath); err == nil {
+	} else {
+		infoPath := findFileCI(path, "info.bin")
+		if infoPath != "" {
 			dirs, err := p.parseNASInfo(infoPath)
 			if err == nil && dirs > 0 {
 				for i := 0; i < dirs; i++ {
@@ -80,10 +138,10 @@ func (p *Parser) discoverDataDirs() error {
 		}
 
 		if len(candidatePaths) == 0 {
-			// Check if the dir itself is a datadir or contains datadir* subdirectories
+			// Check if the dir itself contains datadir* subdirectories
 			entries, _ := os.ReadDir(path)
 			for _, entry := range entries {
-				if entry.IsDir() && strings.HasPrefix(entry.Name(), "datadir") {
+				if entry.IsDir() && strings.HasPrefix(strings.ToLower(entry.Name()), "datadir") {
 					candidatePaths = append(candidatePaths, filepath.Join(path, entry.Name()))
 				}
 			}
@@ -96,30 +154,39 @@ func (p *Parser) discoverDataDirs() error {
 
 	p.dataDirs = make([]DataDirInfo, 0, len(candidatePaths))
 	for idx, dirPath := range candidatePaths {
-		idxBin := filepath.Join(dirPath, "index00.bin")
-		idxSql := filepath.Join(dirPath, "record_db_index00")
-		idxPicBin := filepath.Join(dirPath, "index00p.bin")
-		idxPicSql := filepath.Join(dirPath, "event_db_index00")
-
 		dd := DataDirInfo{
 			Index: idx,
 			Path:  dirPath,
 		}
 
-		if _, err := os.Stat(idxBin); err == nil {
-			dd.IndexFile = idxBin
-			dd.IsSQLiteIdx = false
-		} else if _, err := os.Stat(idxSql); err == nil {
-			dd.IndexFile = idxSql
-			dd.IsSQLiteIdx = true
+		// Look for video index: index00.bin or record_db_index00
+		if f := findFileCI(dirPath, "index00.bin"); f != "" {
+			dd.IndexFile = f
+		} else if f := findFileCI(dirPath, "record_db_index00"); f != "" {
+			dd.IndexFile = f
 		}
 
-		if _, err := os.Stat(idxPicBin); err == nil {
-			dd.PicIndexFile = idxPicBin
-			dd.IsSQLitePicIdx = false
-		} else if _, err := os.Stat(idxPicSql); err == nil {
-			dd.PicIndexFile = idxPicSql
-			dd.IsSQLitePicIdx = true
+		// Look for picture index: index00p.bin or event_db_index00
+		if f := findFileCI(dirPath, "index00p.bin"); f != "" {
+			dd.PicIndexFile = f
+		} else if f := findFileCI(dirPath, "event_db_index00"); f != "" {
+			dd.PicIndexFile = f
+		}
+
+		if dd.IndexFile != "" {
+			idxType, isHIK, isSQL := detectIndexType(dd.IndexFile)
+			dd.IndexType = idxType
+			dd.IsHIKBTREE = isHIK
+			dd.IsSQLiteIdx = isSQL
+		}
+
+		if dd.PicIndexFile != "" {
+			picIdxType, isPicHIK, isPicSQL := detectIndexType(dd.PicIndexFile)
+			dd.IsPicHIKBTREE = isPicHIK
+			dd.IsSQLitePicIdx = isPicSQL
+			if dd.IndexType == "" {
+				dd.IndexType = picIdxType
+			}
 		}
 
 		if dd.IndexFile != "" || dd.PicIndexFile != "" {
@@ -176,7 +243,9 @@ func (p *Parser) ParseAllSegments() ([]models.RecordingSegment, error) {
 		if dd.IndexFile != "" {
 			var segs []models.RecordingSegment
 			var err error
-			if dd.IsSQLiteIdx {
+			if dd.IsHIKBTREE {
+				segs, err = p.parseSegmentsFromHIKBTREE(dd)
+			} else if dd.IsSQLiteIdx {
 				segs, err = p.parseSegmentsFromSQLite(dd)
 			} else {
 				segs, err = p.parseSegmentsFromBinary(dd)
@@ -202,6 +271,101 @@ func (p *Parser) ParseAllSegments() ([]models.RecordingSegment, error) {
 	}
 
 	return allSegments, nil
+}
+
+func (p *Parser) parseSegmentsFromHIKBTREE(dd DataDirInfo) ([]models.RecordingSegment, error) {
+	f, err := os.Open(dd.IndexFile)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	const (
+		pageSize   = 4096
+		baseOffset = uint64(0x04c5e000)
+		fileSize   = uint64(1073741824) // 1GB per chunk
+	)
+
+	// Discover available hiv*.mp4 files in this datadir
+	entries, _ := os.ReadDir(dd.Path)
+	var hivCount int
+	for _, e := range entries {
+		name := strings.ToLower(e.Name())
+		if strings.HasPrefix(name, "hiv") && strings.HasSuffix(name, ".mp4") {
+			hivCount++
+		}
+	}
+
+	totalPages := len(data) / pageSize
+	var segments []models.RecordingSegment
+
+	for pg := 0; pg < totalPages; pg++ {
+		page := data[pg*pageSize : (pg+1)*pageSize]
+		if len(page) < 4 {
+			continue
+		}
+
+		ptype := binary.LittleEndian.Uint32(page[0:4])
+		if ptype != 2 { // Leaf page
+			continue
+		}
+
+		recCount := int(binary.LittleEndian.Uint32(page[16:20]))
+		if recCount > 80 || recCount <= 0 {
+			recCount = (pageSize - 96) / 48
+		}
+
+		for i := 0; i < recCount; i++ {
+			off := 96 + i*48
+			if off+48 > len(page) {
+				break
+			}
+			rec := page[off : off+48]
+
+			t1 := int64(binary.LittleEndian.Uint32(rec[24:28]))
+			t2 := int64(binary.LittleEndian.Uint32(rec[28:32]))
+
+			if t1 < 1000000000 || t1 >= 2147483647 || t2 < 1000000000 || t2 >= 2147483647 || t1 == t2 {
+				continue
+			}
+
+			if t2 < t1 {
+				t1, t2 = t2, t1
+			}
+
+			recType := rec[19]
+			diskOffset := binary.LittleEndian.Uint64(rec[32:40])
+
+			var fileNum uint32
+			if diskOffset >= baseOffset {
+				rawFileIdx := (diskOffset - baseOffset) / fileSize
+				if hivCount > 0 {
+					fileNum = uint32(rawFileIdx % uint64(hivCount))
+				} else {
+					fileNum = uint32(rawFileIdx)
+				}
+			}
+
+			segments = append(segments, models.RecordingSegment{
+				CameraID:    p.cameraID,
+				DataDirNum:  dd.Index,
+				FileNum:     fileNum,
+				StartOffset: 0,
+				EndOffset:   uint32(fileSize),
+				StartTime:   time.Unix(t1, 0).UTC(),
+				EndTime:     time.Unix(t2, 0).UTC(),
+				RecordType:  recType,
+				MediaType:   "video",
+			})
+		}
+	}
+
+	return segments, nil
 }
 
 func (p *Parser) parseSegmentsFromSQLite(dd DataDirInfo) ([]models.RecordingSegment, error) {
